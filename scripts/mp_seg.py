@@ -67,20 +67,22 @@ class App:
             ret, frame = cap.read()
             if not ret:
                 continue
-
             frame = cv2.resize(frame, (512, 512)) # ( X, Y)
+            rgb_img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
             # To improve performance, optionally mark the image as not writeable to pass by reference.
             # image.flags.writeable = False
 
             # Detect face landmarks from the input image.
-            self.update(frame)
+            self.update(rgb_img)
             if self.output_image is None:
                 continue
 
-            strand_map = img2strand(opt, frame, self.output_image)
-            strand_map = cv2.cvtColor(strand_map, cv2.COLOR_RGB2BGR)
-            cv2.imshow('MediaPipe FaceMesh', strand_map)
+            strand_map = img2strand(opt, rgb_img, self.output_image)
+            strand_rgb = cv2.cvtColor(strand_map, cv2.COLOR_BGR2RGB)
+            print(strand_rgb)
+            result = np.vstack((frame, strand_rgb))
+            cv2.imshow('MediaPipe FaceMesh', result)
             #Exit if ESC key is pressed
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
