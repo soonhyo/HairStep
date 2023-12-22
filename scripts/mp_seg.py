@@ -80,7 +80,7 @@ class App:
 
             strand_map = img2strand(opt, rgb_img, self.output_image)
             strand_rgb = cv2.cvtColor(strand_map, cv2.COLOR_BGR2RGB)
-            print(strand_rgb)
+            # print(strand_rgb)
             result = np.vstack((frame, strand_rgb))
             cv2.imshow('MediaPipe FaceMesh', result)
             #Exit if ESC key is pressed
