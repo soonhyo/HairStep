@@ -9,7 +9,7 @@ from lib.options import BaseOptions
 from lib.model.img2hairstep.UNet import Model
 
 def img2strand(opt, rgb_img, mask):
-    print("convert image to strand map")
+    # print("convert image to strand map")
 
     model = Model().cuda()
     model.load_state_dict(torch.load(opt.checkpoint_img2strand))
@@ -37,11 +37,11 @@ def img2strand(opt, rgb_img, mask):
     # g = strand_pred[:,:,1] *2 -1
     # b = strand_pred[:,:,2] *2 -1
 
-    print("g:", g)
-    print("b:", b)
+    # print("g:", g)
+    # print("b:", b)
     theta = np.arctan2(b, g)
 
-    print("angle:", theta*180/np.pi)
+    # print("angle:", theta*180/np.pi)
 
     return (strand_pred*255).astype(np.uint8)
 
