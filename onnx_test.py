@@ -14,13 +14,13 @@ def preprocess(frame):
     return frame
 def overlay_mask(image, mask, colors):
     # 마스크의 크기를 이미지의 크기와 일치하도록 조정
-    mask_resized = cv2.resize(mask.astype(np.uint8), (image.shape[1], image.shape[0]), interpolation=cv2.INTER_NEAREST)
-
+    mask_resized = cv2.resize(mask.astype(np.uint8), (image.shape[1], image.shape[0]), interpolation=cv2.INTER_LINEAR)
     # 마스크를 이미지 위에 오버레이
     for category in range(len(colors)):
         category_mask = mask_resized == category
         image[category_mask] = colors[category]
     return image
+
 def main():
      # 카테고리별 색상 정의 (0부터 5까지의 카테고리)
     colors = [
@@ -33,7 +33,8 @@ def main():
     ]
 
     # ONNX 모델 로드
-    session = ort.InferenceSession('model.onnx')
+    # session = ort.InferenceSession('model.onnx')
+    session = ort.InferenceSession('model.onnx', providers=['CUDAExecutionProvider'])
 
     # 웹캠 초기화
     cap = cv2.VideoCapture(0)
@@ -49,13 +50,13 @@ def main():
 
         # 모델 추론
         inputs = {session.get_inputs()[0].name: input_data}
-        outputs = session.run(None, inputs)
+        outputs = session.run(None, inputs)[0]
 
-        # 추론 결과 처리 (카테고리 마스크를 사용하여 오버레이)
-        mask = np.argmax(outputs[0], axis=1)
+        # 추론 결과 처리 (카테고리 마스크를 사용하65;6003;1c여 오버레이)
+        mask = np.argmax(outputs, axis=-1).squeeze()
         overlayed_image = overlay_mask(frame.copy(), mask, colors)
 
-        cv2.imshow('Webcam', frame)
+        cv2.imshow('Webcam', overlayed_image)
 
         # 'q'를 누르면 반복문 탈출
         if cv2.waitKey(1) & 0xFF == ord('q'):
