@@ -42,7 +42,10 @@ class App:
         #                                        delegate=python.BaseOptions.Delegate.GPU)
 
         self.base_options = python.BaseOptions(model_asset_path='selfie_multiclass_256x256.tflite',
-                                               delegate=python.BaseOptions.Delegate.CPU)
+                                               delegate=python.BaseOptions.Delegate.GPU)
+        # self.base_options = python.BaseOptions(model_asset_path='selfie_segmenter.tflite',
+        #                                        delegate=python.BaseOptions.Delegate.GPU)
+
 
         self.options = ImageSegmenterOptions(base_options=self.base_options,
                                              running_mode=VisionRunningMode.LIVE_STREAM,
@@ -86,14 +89,14 @@ class App:
         cap = cv2.VideoCapture(0)
         opt = MyBaseOptions().parse()
 
-        rate = 40
+        rate = 5
 
         while True:
             ret, frame = cap.read()
             if not ret:
                 continue
 
-            # frame = cv2.resize(frame, (256, 256)) # ( X, Y)
+            # frame = cv2.resize(frame, (512, 512)) # ( X, Y)
             rgb_img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             # To improve performance, optionally mark the image as not writeable to pass by reference.
             # rgb_img.flags.writeable = False
