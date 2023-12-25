@@ -12,7 +12,7 @@ from std_msgs.msg import Header
 import numpy as np
 import cv2
 
-from scripts.mp_seg import App
+from scripts.mp_seg_onnx import App
 
 class RosApp(App):
     def __init__(self):
@@ -22,7 +22,7 @@ class RosApp(App):
         self.image_pub = rospy.Publisher("segmented_image", Image, queue_size=1)
         self.cloud_pub = rospy.Publisher("segmented_cloud", PointCloud2, queue_size=1)
         self.opt = MyBaseOptions().parse()
-        self.rate = rospy.Rate(5)
+        self.rate = rospy.Rate(60)
         self.cv_image = None
         self.cv_depth = None
         self.camera_info = None
@@ -55,18 +55,20 @@ class RosApp(App):
         cx = self.camera_info.K[2]
         cy = self.camera_info.K[5]
 
-        points = []
-        for v in range(depth_image.shape[0]):
-            for u in range(depth_image.shape[1]):
-                if mask[v, u]:
-                    z = depth_image[v, u]/1000.0  # 깊이
-                    x = (u - cx) * z / fx
-                    y = (v - cy) * z / fy
-                    # 이미지의 RGB 값을 가져옴
-                    color = color_image[v, u]
-                    r, g, b = color[2], color[1], color[0]  # OpenCV는 BGR 순서로 색상을 사용합니다
-                    rgba = (0xFF << 24) | (r << 16) | (g << 8) | b  # RGBA 형태로 포맷
-                    points.append([x, y, z, rgba])
+        mask_3d = mask[:,:,np.newaxis].astype(np.bool_)
+
+        v, u = np.indices((depth_image.shape[0], depth_image.shape[1]))
+        z = depth_image / 1000.0
+        x = (u - cx) * z / fx
+        y = (v - cy) * z / fy
+
+        # 마스크 적용
+        colors = np.where(mask_3d, color_image, [0,0,0])
+        r, g, b = colors[:,:, 2], colors[:,:, 1], colors[:,:, 0]
+
+        # rgba = (0xFF << 24) | (r << 16) | (g << 8) | b  # RGBA 형태로 변환
+        rgba = (0xFF << 24) | (r.astype(np.uint32) << 16) | (g.astype(np.uint32) << 8) | b.astype(np.uint32)
+        points = np.concatenate((x[:,:,np.newaxis][mask_3d][:,np.newaxis], y[:,:,np.newaxis][mask_3d][:,np.newaxis], z[:,:,np.newaxis][mask_3d][:,np.newaxis], rgba[:,:,np.newaxis][mask_3d][:,np.newaxis].astype(np.uint32)), axis=1, dtype=object)
 
         # PointField 구조 정의
         fields = [PointField('x', 0, PointField.FLOAT32, 1),
