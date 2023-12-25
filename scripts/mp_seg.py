@@ -22,6 +22,9 @@ VisionRunningMode = mp.tasks.vision.RunningMode
 BG_COLOR = (192, 192, 192) # gray
 BLACK_COLOR = (0, 0, 0) # black
 MASK_COLOR = (255, 255, 255) # white
+BODY_COLOR = (0, 255, 0) # green
+FACE_COLOR = (255, 0, 0) # red
+CLOTHES_COLOR = (255, 0, 255) # purple
 
 # 0 - background
 # 1 - hair
@@ -70,18 +73,20 @@ class App:
         fg_image[:] = MASK_COLOR[0]
         bg_image = np.zeros(image_data.shape[:2], dtype=np.uint8)
         bg_image[:] = BLACK_COLOR[0]
-        condition = category_mask.numpy_view() == 1 # hair
+
+        condition1 = category_mask.numpy_view() == 1 # hair
         # print(np.unique(category_mask.numpy_view()))
         # confidence = confidence_mask.numpy_view()
         # print(confidence)
-        self.output_image = np.where(condition, fg_image, bg_image)
+        self.output_image = np.where(condition1, fg_image, bg_image)
+
         # self.output_image = cv2.cvtColor(self.output_image, cv2.COLOR_GRAY2RGB)
 
     def main(self):
         cap = cv2.VideoCapture(0)
         opt = MyBaseOptions().parse()
 
-        rate = 30
+        rate = 40
 
         while True:
             ret, frame = cap.read()
