@@ -23,22 +23,16 @@ def img2strand(opt, rgb_img, mask):
     rgb_img = rgb_img*mask
 
     rgb_img = Variable(torch.from_numpy(rgb_img).permute(2, 0, 1).float().unsqueeze(0)).cuda()
-
     strand_pred = model(rgb_img)
+
     # strand_pred = strand_pred.permute(0, 2, 3, 1)[0].cpu().detach().numpy()
     # strand_pred = strand_pred * 2 - 1
+
     strand_pred = np.clip(strand_pred.permute(0, 2, 3, 1)[0].cpu().detach().numpy(), 0., 1.)  # 512 * 512 *60
     strand_pred = np.concatenate([mask, strand_pred * mask], axis=-1)
-    # print("strand", strand_pred.shape)
-    # print("strand_concate", strand_pred.shape)
-    # print("mask", mask*255)
+
     g = strand_pred[:,:,1]
     b = strand_pred[:,:,2]
-    # g = strand_pred[:,:,1] *2 -1
-    # b = strand_pred[:,:,2] *2 -1
-
-    # print("g:", g)
-    # print("b:", b)
     theta = np.arctan2(b, g)
 
     # print("angle:", theta*180/np.pi)

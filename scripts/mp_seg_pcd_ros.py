@@ -11,21 +11,28 @@ from cv_bridge import CvBridge, CvBridgeError
 from std_msgs.msg import Header
 import numpy as np
 import cv2
+import cuml
 
 from scripts.mp_seg_onnx import App
+
+
+BLACK_COLOR = (0, 0, 0) # black
 
 class RosApp(App):
     def __init__(self):
         super(RosApp, self).__init__()
         rospy.init_node('mediapipe_ros_node', anonymous=True)
         self.bridge = CvBridge()
-        self.image_pub = rospy.Publisher("segmented_image", Image, queue_size=1)
+        self.strand_pub = rospy.Publisher("segmented_image", Image, queue_size=1)
+        self.hair_pub = rospy.Publisher("segmented_hair_image", Image, queue_size=1)
+
         self.cloud_pub = rospy.Publisher("segmented_cloud", PointCloud2, queue_size=1)
         self.opt = MyBaseOptions().parse()
         self.rate = rospy.Rate(60)
         self.cv_image = None
         self.cv_depth = None
         self.camera_info = None
+        self.points = None
         rospy.Subscriber("/camera/color/image_rect_color", Image, self.image_callback)
         rospy.Subscriber("/camera/aligned_depth_to_color/image_raw", Image, self.depth_callback)
         rospy.Subscriber("/camera/aligned_depth_to_color/camera_info", CameraInfo, self.camera_info_callback)
@@ -42,8 +49,40 @@ class RosApp(App):
         except CvBridgeError as e:
             rospy.logerr(e)
 
+    def apply_hair_mask(self, image, mask, time_now):
+        bg_image = np.zeros(image.shape, dtype=np.uint8)
+
+        condition = mask == 255 # hair
+        condition_3d = condition[:,:,np.newaxis]
+        ros_image = np.where(condition_3d, image, bg_image)
+
+        ros_msg = self.bridge.cv2_to_imgmsg(ros_image, "bgr8")
+        ros_msg.header = Header(stamp=time_now)
+        return ros_msg
+
     def camera_info_callback(self, data):
         self.camera_info = data
+
+    def get_largest_cluster(self, points, eps=0.05, min_samples=10):
+        # GPU 기반 DBSCAN 클러스터링
+        if len(points) == 0:
+            return []
+        clustering = cuml.DBSCAN(eps=eps, min_samples=min_samples)
+        clustering.fit(points, out_dtype='int64')
+        labels = clustering.labels_
+        print(labels.shape)
+        # 라벨이 -1인 경우는 노이즈로 간주하여 제외
+        filtered_labels = labels[labels != -1]
+
+        # 가장 큰 클러스터의 인덱스 찾기
+        if len(filtered_labels) == 0:
+            # raise ValueError("유효한 클러스터를 찾을 수 없습니다.")
+            return []
+        print(filtered_labels.shape)
+        largest_cluster_idx = np.argmax(np.bincount(filtered_labels))
+
+        # 가장 큰 클러스터의 포인트만 추출
+        return labels == largest_cluster_idx
 
     def create_point_cloud(self, color_image, depth_image, mask, time_now):
         if self.camera_info is None:
@@ -78,8 +117,7 @@ class RosApp(App):
 
         # PointCloud2 메시지 생성
         header = Header(frame_id='camera_color_optical_frame', stamp=time_now)
-        cloud = pc2.create_cloud(header, fields, points)
-        return cloud
+        return points, header, fields
 
     def main(self):
         while not rospy.is_shutdown():
@@ -92,11 +130,16 @@ class RosApp(App):
                     try:
                         ros_image = self.bridge.cv2_to_imgmsg(strand_rgb, "bgr8")
                         ros_image.header = Header(stamp=time_now)
-                        self.image_pub.publish(ros_image)
-
-                        cloud = self.create_point_cloud(strand_rgb, self.cv_depth, self.output_image, time_now)
-                        if cloud is not None:
-                            self.cloud_pub.publish(cloud)
+                        self.strand_pub.publish(ros_image)
+                        self.hair_pub.publish(self.apply_hair_mask(self.cv_image, self.output_image, time_now))
+                        points, header, fields= self.create_point_cloud(strand_rgb, self.cv_depth, self.output_image, time_now)
+                        largest_cloud_mask = self.get_largest_cluster(np.asarray(points[:,:3], dtype=np.float32))
+                        if len(largest_cloud_mask) == 0:
+                            continue
+                        largest_cloud = points[largest_cloud_mask]
+                        largest_cloud_msg = pc2.create_cloud(header, fields, largest_cloud)
+                        if largest_cloud_msg is not None:
+                            self.cloud_pub.publish(largest_cloud_msg)
                     except CvBridgeError as e:
                         rospy.logerr(e)
             self.rate.sleep()

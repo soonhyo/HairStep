@@ -7,7 +7,7 @@ import onnxruntime as ort
 def preprocess(frame):
     # 이미지 전처리 로직 (모델에 맞게 조정 필요)
     frame = cv2.resize(frame, (256,256))
-    frame = frame.reshape(1,256,256,3)  # 예시: 224x224 크기로 리사이즈
+    frame = frame.reshape(1,256,256,3)
     frame = frame.astype(np.float32) / 255.0  # 정규화
     # frame = np.transpose(frame, (2, 0, 1))  # 채널 변경 (HWC to CHW)
     # frame = np.expand_dims(frame, axis=0)  # 배치 차원 추가
@@ -52,7 +52,7 @@ def main():
         inputs = {session.get_inputs()[0].name: input_data}
         outputs = session.run(None, inputs)[0]
 
-        # 추론 결과 처리 (카테고리 마스크를 사용하65;6003;1c여 오버레이)
+        # 추론 결과 처리 (카테고리 마스크를 사용하여 오버레이)
         mask = np.argmax(outputs, axis=-1).squeeze()
         overlayed_image = overlay_mask(frame.copy(), mask, colors)
 
