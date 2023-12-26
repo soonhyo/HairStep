@@ -11,8 +11,7 @@ from cv_bridge import CvBridge, CvBridgeError
 from std_msgs.msg import Header
 import numpy as np
 import cv2
-import cuml
-
+import open3d as o3d
 from scripts.mp_seg_onnx import App
 
 
@@ -63,26 +62,53 @@ class RosApp(App):
     def camera_info_callback(self, data):
         self.camera_info = data
 
-    def get_largest_cluster(self, points, eps=0.05, min_samples=10):
-        # GPU 기반 DBSCAN 클러스터링
+    def downsample_and_cluster(self, points, voxel_size=0.005, eps=0.05, min_points=10):
         if len(points) == 0:
             return []
-        clustering = cuml.DBSCAN(eps=eps, min_samples=min_samples)
-        clustering.fit(points, out_dtype='int64')
-        labels = clustering.labels_
-        print(labels.shape)
-        # 라벨이 -1인 경우는 노이즈로 간주하여 제외
-        filtered_labels = labels[labels != -1]
+
+        # Voxel 다운샘플링
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(points)
+
+        # Voxel 다운샘플링
+        downsampled_pcd = pcd.voxel_down_sample(voxel_size)
+        downsampled_points = np.asarray(downsampled_pcd.points)
+
+        # DBSCAN 클러스터링
+        # with o3d.utility.VerbosityContextManager(o3d.utility.VerbosityLevel.Debug) as cm:
+        labels = np.array(downsampled_pcd.cluster_dbscan(eps=eps, min_points=min_points, print_progress=True))
 
         # 가장 큰 클러스터의 인덱스 찾기
-        if len(filtered_labels) == 0:
-            # raise ValueError("유효한 클러스터를 찾을 수 없습니다.")
-            return []
-        print(filtered_labels.shape)
-        largest_cluster_idx = np.argmax(np.bincount(filtered_labels))
+        unique_labels, counts = np.unique(labels, return_counts=True)
+        ind = np.argmax(counts)
 
-        # 가장 큰 클러스터의 포인트만 추출
-        return labels == largest_cluster_idx
+        max_label = unique_labels[ind]
+        if max_label < 0:
+            return []
+            # raise ValueError("유효한 클러스터를 찾을 수 없습니다.")
+
+        largest_cluster_idx = np.argmax(np.bincount(labels[labels == max_label]))
+
+        # 가장 큰 클러스터에 해당하는 포인트들의 원래 인덱스 찾기
+        largest_cluster_points = downsampled_points[labels == largest_cluster_idx]
+
+
+        # 가장 큰 클러스터에 해당하는 원래 포인트들의 인덱스 찾기
+        original_indices = []
+        for i, original_point in enumerate(points):
+            if any(np.linalg.norm(original_point - cluster_point) < voxel_size for cluster_point in largest_cluster_points):
+                original_indices.append(i)
+
+        return original_indices
+
+    def filter_points_in_distance_range(self, points, min_distance=0.001, max_distance=0.8):
+        # 카메라(원점)로부터의 거리 계산
+        points = points.astype(np.float32)
+        distances = np.linalg.norm(points, axis=1)
+
+        # 거리 범위에 있는 포인트 필터링
+        filtered_indices = np.where((distances >= min_distance) & (distances <= max_distance))[0]
+        return filtered_indices
 
     def create_point_cloud(self, color_image, depth_image, mask, time_now):
         if self.camera_info is None:
@@ -133,10 +159,10 @@ class RosApp(App):
                         self.strand_pub.publish(ros_image)
                         self.hair_pub.publish(self.apply_hair_mask(self.cv_image, self.output_image, time_now))
                         points, header, fields= self.create_point_cloud(strand_rgb, self.cv_depth, self.output_image, time_now)
-                        largest_cloud_mask = self.get_largest_cluster(np.asarray(points[:,:3], dtype=np.float32))
-                        if len(largest_cloud_mask) == 0:
+                        if len(points) == 0:
                             continue
-                        largest_cloud = points[largest_cloud_mask]
+                        indices= self.filter_points_in_distance_range(points[:,:3])
+                        largest_cloud = points[indices]
                         largest_cloud_msg = pc2.create_cloud(header, fields, largest_cloud)
                         if largest_cloud_msg is not None:
                             self.cloud_pub.publish(largest_cloud_msg)

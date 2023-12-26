@@ -40,8 +40,8 @@ class App:
         ]
 
         # ONNX 모델 로드
-        # self.session = ort.InferenceSession('model.onnx', providers=['CPUExecutionProvider'])
-        self.session = ort.InferenceSession('model.onnx', providers=['CUDAExecutionProvider'])
+        self.session = ort.InferenceSession('model.onnx', providers=['CPUExecutionProvider'])
+        # self.session = ort.InferenceSession('model.onnx', providers=['CUDAExecutionProvider'])
 
     def preprocess(self, frame):
         frame = cv2.resize(frame, (256,256))
