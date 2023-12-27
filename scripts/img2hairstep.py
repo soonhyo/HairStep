@@ -5,6 +5,6 @@ from scripts.img2depth import img2depth
 
 if __name__ == "__main__":
     opt = BaseOptions().parse()
-    img2masks(opt)
+    # img2masks(opt)
     img2strand(opt)
-    img2depth(opt)
+    # img2depth(opt)

@@ -89,5 +89,5 @@ class CreatePointCloud(object):
                   PointField('rgba', 12, PointField.UINT32, 1)]
 
         # PointCloud2 메시지 생성
-        header = Header(frame_id='camera_color_optical_frame', stamp=time_now)
+        header = Header(frame_id=self.camera_info.header.frame_id, stamp=time_now)
         return points, header, fields
