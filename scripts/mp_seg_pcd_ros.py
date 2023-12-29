@@ -13,9 +13,12 @@ import numpy as np
 import cv2
 import open3d as o3d
 
+
+# from scripts.mp_segmenter import App
 from scripts.mp_seg_onnx import App
 from scripts.create_pcd import CreatePointCloud
 from scripts.crf import CRFSegmentationRefiner
+from scripts.utils import HairAngleCalculator
 
 BLACK_COLOR = (0, 0, 0) # black
 
@@ -37,8 +40,11 @@ class RosApp(App):
         self.camera_info = None
         self.points = None
 
+        self.distance = 1.5
         self.create_pcd = None
         self.refiner = None
+
+        self.hair_angle_calculator = HairAngleCalculator(15)
         rospy.Subscriber("/camera/color/image_rect_color", Image, self.image_callback)
         rospy.Subscriber("/camera/aligned_depth_to_color/image_raw", Image, self.depth_callback)
         rospy.Subscriber("/camera/aligned_depth_to_color/camera_info", CameraInfo, self.camera_info_callback)
@@ -92,14 +98,14 @@ class RosApp(App):
                 self.update(self.cv_image)
                 time_now = rospy.Time.now()
                 if self.output_image is not None:
-                    self.output_image = self.refiner.refine(self.cv_image, self.output_image)
+                    # self.output_image = self.refiner.refine(self.cv_image, self.output_image)
                     masked_depth = self.apply_depth_mask(self.cv_depth, self.output_image)
+                    self.output_image = self.refiner.refine_mask_with_depth(self.output_image, masked_depth, self.distance)
 
-                    self.output_image = self.refiner.refine_mask_with_depth(self.output_image, masked_depth)
+                    # strand_map = img2strand(self.opt, self.cv_image, self.output_image)
+                    # strand_rgb = cv2.cvtColor(strand_map, cv2.COLOR_BGR2RGB)
 
-                    strand_map = img2strand(self.opt, self.cv_image, self.output_image)
-                    strand_rgb = cv2.cvtColor(strand_map, cv2.COLOR_BGR2RGB)
-
+                    strand_rgb = self.hair_angle_calculator.process_image(self.cv_image, self.output_image)
                     masked_depth_msg= self.make_depth_msg(masked_depth, time_now)
                     try:
                         ros_image = self.bridge.cv2_to_imgmsg(strand_rgb, "bgr8")
@@ -111,7 +117,7 @@ class RosApp(App):
                         points, header, fields= self.create_pcd.create_point_cloud(strand_rgb, self.cv_depth, self.output_image, time_now)
                         if len(points) == 0:
                             continue
-                        indices= self.create_pcd.filter_points_in_distance_range(points[:,:3], 0.01, 0.8)
+                        indices= self.create_pcd.filter_points_in_distance_range(points[:,:3], 0.01, self.distance)
                         closest_cloud = points[indices]
 
                         largest_cloud_msg = pc2.create_cloud(header, fields, closest_cloud)

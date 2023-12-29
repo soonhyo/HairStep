@@ -43,11 +43,11 @@ class App:
     def __init__(self):
         self.output_image = None
         # Create an FaceLandmarker object.
-        # self.base_options = python.BaseOptions(model_asset_path='hair_segmenter.tflite',
-        #                                        delegate=python.BaseOptions.Delegate.GPU)
+        self.base_options = python.BaseOptions(model_asset_path='hair_segmenter.tflite',
+                                               delegate=python.BaseOptions.Delegate.GPU)
 
-        self.base_options = python.BaseOptions(model_asset_path='selfie_multiclass_256x256.tflite',
-                                               delegate=python.BaseOptions.Delegate.CPU)
+        # self.base_options = python.BaseOptions(model_asset_path='selfie_multiclass_256x256.tflite',
+        #                                        delegate=python.BaseOptions.Delegate.CPU)
 
         self.options = ImageSegmenterOptions(base_options=self.base_options,
                                              running_mode=VisionRunningMode.LIVE_STREAM,

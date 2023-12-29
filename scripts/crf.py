@@ -3,7 +3,7 @@ import pydensecrf.densecrf as dcrf
 from pydensecrf.utils import unary_from_labels, create_pairwise_bilateral, create_pairwise_gaussian
 
 class CRFSegmentationRefiner:
-    def __init__(self, gt_prob=0.7, scale_factor=1.0):
+    def __init__(self, gt_prob=0.6, scale_factor=1.0):
         """
         CRF를 사용하여 세그멘테이션 결과를 보정하는 클래스를 초기화합니다.
 
@@ -39,7 +39,7 @@ class CRFSegmentationRefiner:
 
         # Pairwise potentials 추가
         crf.addPairwiseGaussian(sxy=(3, 3), compat=3)
-        crf.addPairwiseBilateral(sxy=(80, 80), srgb=(13, 13, 13), rgbim=resized_image, compat=10)
+        crf.addPairwiseBilateral(sxy=(100, 100), srgb=(13, 13, 13), rgbim=resized_image, compat=10)
 
         # CRF 최적화
         Q = crf.inference(5)
@@ -49,20 +49,9 @@ class CRFSegmentationRefiner:
 
         return refined_mask
 
-    def refine_mask_with_depth(self, mask, depth_image, threshold=800):
+    def refine_mask_with_depth(self, mask, depth_image, threshold=0.8):
+        outliers = depth_image/1000.0 > threshold
 
-        # 마스크된 영역의 깊이 값 추출
-        masked_depth = depth_image[mask > 0]
-
-        # 평균 깊이 계산
-        mean_depth = np.mean(masked_depth)
-
-        # 평균으로부터의 거리가 임계값 이상인 픽셀을 찾음
-        depth_diff = np.abs(depth_image - mean_depth)
-
-        outliers = depth_diff > threshold
-
-        # 원래 마스크에서 이상치 제거
         refined_mask = np.copy(mask)
         refined_mask[outliers] = 0
 
