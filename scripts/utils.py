@@ -1,6 +1,7 @@
 import cv2
 import onnxruntime
 import numpy as np
+import math
 import torch
 import torch.nn.functional as F
 from skimage import img_as_ubyte
@@ -68,7 +69,10 @@ class HairAngleCalculator:
         # Calculate the angles
         angles = torch.zeros_like(nominator)
         non_zero_mask = (nominator != 0) | (denominator != 0)
-        angles[non_zero_mask] = (torch.pi + torch.atan2(nominator[non_zero_mask], denominator[non_zero_mask])) / 2
+        try:
+            angles[non_zero_mask] = (torch.pi + torch.atan2(nominator[non_zero_mask], denominator[non_zero_mask])) / 2
+        except:
+            angles[non_zero_mask] = (math.pi + torch.atan2(nominator[non_zero_mask], denominator[non_zero_mask])) / 2
 
         return angles
 

@@ -49,10 +49,3 @@ class CRFSegmentationRefiner:
 
         return refined_mask
 
-    def refine_mask_with_depth(self, mask, depth_image, threshold=0.8):
-        outliers = depth_image/1000.0 > threshold
-
-        refined_mask = np.copy(mask)
-        refined_mask[outliers] = 0
-
-        return refined_mask
