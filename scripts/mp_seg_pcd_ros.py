@@ -139,6 +139,7 @@ class RosApp(App):
         sphere_marker.color.b = 0.0
 
         return sphere_marker
+
     def create_plane_and_inliers_markers(self, plane, inliers, points, plane_scale=(0.5, 0.5, 0.001), frame_id="base"):
         # Plane normal vector
         a, b, c, d = plane
@@ -156,9 +157,9 @@ class RosApp(App):
         plane_marker.header.frame_id = frame_id
         plane_marker.type = Marker.CUBE
         plane_marker.action = Marker.ADD
-        plane_marker.pose.position.x = -d * normal_vector[0]
-        plane_marker.pose.position.y = -d * normal_vector[1]
-        plane_marker.pose.position.z = -d * normal_vector[2]
+        plane_marker.pose.position.x = -d * normal_vector_normalized[0]
+        plane_marker.pose.position.y = -d * normal_vector_normalized[1]
+        plane_marker.pose.position.z = -d * normal_vector_normalized[2]
         plane_marker.pose.orientation = Quaternion(*quaternion)
         plane_marker.scale.x, plane_marker.scale.y, plane_marker.scale.z = plane_scale
         plane_marker.color.a = 1.0  # Transparency
@@ -218,16 +219,16 @@ class RosApp(App):
                         indices= self.create_pcd.filter_points_in_distance_range(points[:,:3], 0.01, self.distance)
                         closest_cloud = points[indices]
 
-                        estimated_plane, plane_inliers = self.ransac(closest_cloud[:,:3][::2], 0.05, 3, 100)
+                        estimated_plane, plane_inliers = self.ransac(closest_cloud[:,:3][::2], 0.3, 3, 100)
                         # if len(closest_cloud[:,:3]) > 4:
                         #     center, radius, sph_inliers = self.sph.fit(closest_cloud[:,:3].astype(np.float32), thresh=0.3, maxIteration=100)
+                        # if (center is not None) and (radius is not None):
+                        #     sph_msg = self.create_sphere_marker(center, radius, self.frame_id)
+                        #     self.sphere_pub.publish(sph_msg)
 
                         if (estimated_plane is not None) and (plane_inliers is not None):
                             plane_msg, plane_inliers_msg = self.create_plane_and_inliers_markers(estimated_plane, plane_inliers, closest_cloud[:,:3], (0.5, 0.5, 0.001), frame_id=self.frame_id)
                             self.plane_pub.publish(plane_msg)
-                        # if (center is not None) and (radius is not None):
-                        #     sph_msg = self.create_sphere_marker(center, radius, self.frame_id)
-                        #     self.sphere_pub.publish(sph_msg)
 
                         largest_cloud_msg = pc2.create_cloud(header, fields, closest_cloud)
 
