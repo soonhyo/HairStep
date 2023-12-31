@@ -28,6 +28,7 @@ CLOTHES_COLOR = (255, 0, 255) # purple
 class App:
     def __init__(self):
         self.output_image = None
+        self.output_image_face = None
 
         # 카테고리별 색상 정의 (0부터 5까지의 카테고리)
         self.colors = [
@@ -65,8 +66,10 @@ class App:
         bg_image = np.zeros(mask.shape[:2], dtype=np.uint8)
         bg_image[:] = BLACK_COLOR[0]
 
-        condition = mask == 1 # hair
-        self.output_image = np.where(condition, fg_image, bg_image)
+        condition1 = mask == 1 # hair
+        condition2 = mask == 3
+        self.output_image = np.where(condition1, fg_image, bg_image)
+        self.output_image_face = np.where(condition2, fg_image, bg_image)
 
     def update(self, image):
         # 이미지 전처리

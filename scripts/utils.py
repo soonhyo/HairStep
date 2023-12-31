@@ -123,14 +123,15 @@ class HairAngleCalculator:
         return xy_list, result
 
     def process_image(self, frame, hair_mask):
-        resize_cef = 1
-        frame = cv2.resize(frame, None, fx=resize_cef, fy=resize_cef)
-        hair_mask = cv2.resize(hair_mask, None, fx=resize_cef, fy=resize_cef)
+        # resize_cef = 1
+        # frame = cv2.resize(frame, None, fx=resize_cef, fy=resize_cef)
+        # hair_mask = cv2.resize(hair_mask, None, fx=resize_cef, fy=resize_cef)
+
         # frame = self.equalize_image(frame)
         gray_map=cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         # ret, otsu_map = cv2.threshold(gray_map, 0, 128, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-        cof_map = coh.coherence_filter(gray_map, sigma=7, str_sigma=15, blend=0.5, iter_n=3, gray_on=0)
+        cof_map = coh.coherence_filter(gray_map, sigma=3, str_sigma=15, blend=0.5, iter_n=3, gray_on=0)
         # cof_map = gray_map
 
         angle_map = self.calculate_angles(torch.Tensor(cof_map), self.size)
@@ -145,6 +146,6 @@ class HairAngleCalculator:
         # angle_color_map = cv2.applyColorMap(angle_color, cv2.COLORMAP_JET)
         # angle_color_map = cv2.resize(angle_color_map, None, fx=1/resize_cef, fy=1/resize_cef)
 
-        debug_map = cv2.resize(debug_map, None, fx=1/resize_cef, fy=1/resize_cef)
+        # debug_map = cv2.resize(debug_map, None, fx=1/resize_cef, fy=1/resize_cef)
         # cv2.cvtColor(cof_map, cv2.COLOR_GRAY2BGR)
         return debug_map

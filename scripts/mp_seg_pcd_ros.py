@@ -53,7 +53,7 @@ class RosApp(App):
         # self.refiner = None
         self.sph = pyrsc.Sphere()
 
-        self.hair_angle_calculator = HairAngleCalculator(7)
+        self.hair_angle_calculator = HairAngleCalculator(15)
         rospy.Subscriber("/camera/color/image_rect_color", Image, self.image_callback)
         rospy.Subscriber("/camera/aligned_depth_to_color/image_raw", Image, self.depth_callback)
         rospy.Subscriber("/camera/aligned_depth_to_color/camera_info", CameraInfo, self.camera_info_callback)
@@ -130,6 +130,8 @@ class RosApp(App):
         sphere_marker.type = Marker.SPHERE
         sphere_marker.action = Marker.ADD
         sphere_marker.pose.position = Point(*center)
+        sphere_marker.pose.orientation = Quaternion(0, 0, 0, 1)
+
         sphere_marker.scale.x = radius * 2  # Diameter in x
         sphere_marker.scale.y = radius * 2  # Diameter in y
         sphere_marker.scale.z = radius * 2  # Diameter in z
@@ -185,7 +187,6 @@ class RosApp(App):
             inliers_marker.points.append(p)
 
         return plane_marker, inliers_marker
-
     def main(self):
         while not self.camera_info:
             continue
@@ -219,12 +220,12 @@ class RosApp(App):
                         indices= self.create_pcd.filter_points_in_distance_range(points[:,:3], 0.01, self.distance)
                         closest_cloud = points[indices]
 
-                        estimated_plane, plane_inliers = self.ransac(closest_cloud[:,:3][::2], 0.3, 3, 100)
                         # if len(closest_cloud[:,:3]) > 4:
-                        #     center, radius, sph_inliers = self.sph.fit(closest_cloud[:,:3].astype(np.float32), thresh=0.3, maxIteration=100)
+                        #     center, radius, sph_inliers = self.sph.fit(closest_cloud[:,:3].astype(np.float32),thresh=0.05, maxIteration=100)
                         # if (center is not None) and (radius is not None):
                         #     sph_msg = self.create_sphere_marker(center, radius, self.frame_id)
                         #     self.sphere_pub.publish(sph_msg)
+                        estimated_plane, plane_inliers = self.ransac(closest_cloud[:,:3][::4], 0.3, 3, 50)
 
                         if (estimated_plane is not None) and (plane_inliers is not None):
                             plane_msg, plane_inliers_msg = self.create_plane_and_inliers_markers(estimated_plane, plane_inliers, closest_cloud[:,:3], (0.5, 0.5, 0.001), frame_id=self.frame_id)
