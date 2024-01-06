@@ -11,8 +11,44 @@ import scripts.sample_cef_gpu as coh
 from scipy.interpolate import griddata
 
 class HairAngleCalculator:
-    def __init__(self, size=15):
+    def __init__(self, size=15, mode="strip"):
         self.size = size
+        self.mode = mode
+
+        self.padding = self.size//2
+        self.num_angles = 180 # for gabor filter
+        self.psi = 0 # for gabor filter
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    def create_gabor_batch(self, size, sigma, thetas, lambd, gamma, psi):
+        x, y = torch.meshgrid(torch.linspace(-1, 1, size), torch.linspace(-1, 1, size), indexing="xy")
+        x = x.view(1, 1, size, size).repeat(len(thetas), 1, 1, 1).to(thetas.device)
+        y = y.view(1, 1, size, size).repeat(len(thetas), 1, 1, 1).to(thetas.device)
+        x_thetas = x * torch.cos(thetas.view(-1, 1, 1, 1)) + y * torch.sin(thetas.view(-1, 1, 1, 1))
+        y_thetas = -x * torch.sin(thetas.view(-1, 1, 1, 1)) + y * torch.cos(thetas.view(-1, 1, 1, 1))
+        gabor = torch.exp(-0.5 * (x_thetas ** 2 + gamma ** 2 * y_thetas ** 2) / sigma ** 2) * torch.cos(2 * np.pi * x_thetas / lambd + psi)
+        return gabor
+
+    def seg_hair(self, image):
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        image = torch.from_numpy(gray).float().unsqueeze(0).unsqueeze(0).to(self.device)
+        num_angles = self.num_angles
+        orientations = torch.linspace(0, np.pi, num_angles).to(self.device)
+        gabors = self.create_gabor_batch(self.size, 0.5, orientations, 1.5, 0.5, self.psi).to(self.device)  # psi is now pi/2 (90 degrees)
+        filtered_images = F.conv2d(image, gabors, padding=self.padding).squeeze(0)
+        theta_xy = torch.argmax(filtered_images, axis=0)
+        f_xy = torch.max(torch.pow(torch.abs(filtered_images), 0.5))
+
+        psi_xy = torch.exp(1j * 2 * theta_xy)
+        product = f_xy * psi_xy
+        orientation_map = torch.where(f_xy > 0, product, 0)
+
+        orientation_map = orientation_map.cpu().numpy()
+
+        float_map = np.angle(orientation_map) / np.pi
+        color_map = cv2.applyColorMap(np.uint8(float_map * 255), cv2.COLORMAP_JET)
+
+        return color_map, orientation_map
 
     def equalize_image(self, image):
         img_yuv = cv2.cvtColor(image, cv2.COLOR_BGR2YUV)
@@ -81,8 +117,8 @@ class HairAngleCalculator:
             begin = (i, int((-W/2) * tang + j + W/2))
             end = (i + W, int((W/2) * tang + j + W/2))
         else:
-            begin = (int(i + W/2 + W/(2 * tang)), j + W//2)
-            end = (int(i + W/2 - W/(2 * tang)), j - W//2)
+            begin = (int(i + W/2 + W/(2 * tang)), int(j + W//2))
+            end = (int(i + W/2 - W/(2 * tang)), int(j - W//2))
         return (begin, end)
 
     def visualize_angles(self, im, mask, angles, W):
@@ -118,7 +154,7 @@ class HairAngleCalculator:
                     if idx_j < angles.shape[0] and idx_i < angles.shape[1]:
                         tang = angles[idx_j, idx_i].cpu().numpy()
                         result[j-1:j+W, i-1:i+W] = tang
-        print(result.shape)
+        # print(result.shape)
 
         return xy_list, result
 
@@ -131,21 +167,25 @@ class HairAngleCalculator:
         gray_map=cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         # ret, otsu_map = cv2.threshold(gray_map, 0, 128, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-        cof_map = coh.coherence_filter(gray_map, sigma=3, str_sigma=15, blend=0.5, iter_n=3, gray_on=0)
+        cof_map = coh.coherence_filter(gray_map, sigma=5, str_sigma=15, blend=0.5, iter_n=3, gray_on=0)
         # cof_map = gray_map
 
         angle_map = self.calculate_angles(torch.Tensor(cof_map), self.size)
-        xy_list, angle_visual= self.visualize_angles(gray_map, torch.Tensor(hair_mask), angle_map, self.size)
-        debug_map = cv2.addWeighted(frame, 0.5, angle_visual,0.5, 2.2)
+        if self.mode == "strip":
+            xy_list, angle_visual= self.visualize_angles(gray_map, torch.Tensor(hair_mask), angle_map, self.size)
+            debug_map = cv2.addWeighted(frame, 0.5, angle_visual,0.5, 2.2)
+            return debug_map
+        elif self.mode == "gabor":
+            color_map, orientation_map = self.seg_hair(frame)
+            return color_map
+        elif self.mode == "color":
+            _, angle_color= self.visualize_color_angles(gray_map, torch.Tensor(hair_mask), angle_map, self.size)
 
-        # _, angle_color= self.visualize_color_angles(gray_map, torch.Tensor(hair_mask), angle_map, self.size)
-        # if np.max(angle_color) != 0:
-        #     angle_color= img_as_ubyte(angle_color / np.max(angle_color))
-        # else:
-        #     angle_color= img_as_ubyte(angle_color)
-        # angle_color_map = cv2.applyColorMap(angle_color, cv2.COLORMAP_JET)
+            angle_color= angle_color / np.pi
+            angle_color_map = cv2.applyColorMap(np.uint8(angle_color*255), cv2.COLORMAP_JET)
+            # angle_color_map = cv2.GaussianBlur(angle_color_map, (self.size, self.size), 0)
+            return angle_color_map
         # angle_color_map = cv2.resize(angle_color_map, None, fx=1/resize_cef, fy=1/resize_cef)
 
         # debug_map = cv2.resize(debug_map, None, fx=1/resize_cef, fy=1/resize_cef)
         # cv2.cvtColor(cof_map, cv2.COLOR_GRAY2BGR)
-        return debug_map
