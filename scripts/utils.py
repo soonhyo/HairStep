@@ -10,6 +10,8 @@ import scripts.sample_cef_gpu as coh
 
 from scipy.interpolate import griddata
 
+import matplotlib.pyplot as plt
+
 class HairAngleCalculator:
     def __init__(self, size=15, mode="strip"):
         self.size = size
@@ -29,26 +31,41 @@ class HairAngleCalculator:
         gabor = torch.exp(-0.5 * (x_thetas ** 2 + gamma ** 2 * y_thetas ** 2) / sigma ** 2) * torch.cos(2 * np.pi * x_thetas / lambd + psi)
         return gabor
 
-    def seg_hair(self, image):
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    def seg_hair(self, image, color_mask=[]):
+        if image.ndim == 3:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = image
         image = torch.from_numpy(gray).float().unsqueeze(0).unsqueeze(0).to(self.device)
         num_angles = self.num_angles
         orientations = torch.linspace(0, np.pi, num_angles).to(self.device)
-        gabors = self.create_gabor_batch(self.size, 0.5, orientations, 1.5, 0.5, self.psi).to(self.device)  # psi is now pi/2 (90 degrees)
-        filtered_images = F.conv2d(image, gabors, padding=self.padding).squeeze(0)
-        theta_xy = torch.argmax(filtered_images, axis=0)
-        f_xy = torch.max(torch.pow(torch.abs(filtered_images), 0.5))
+        gabors = self.create_gabor_batch(self.size, 0.3, orientations, 0.8, 1, self.psi).to(self.device) # 15, 0.3, 180, 0.8, 1, 0
 
-        psi_xy = torch.exp(1j * 2 * theta_xy)
-        product = f_xy * psi_xy
-        orientation_map = torch.where(f_xy > 0, product, 0)
+        filtered_images = F.conv2d(image, gabors, padding=self.padding).squeeze(0)
+        orientation_map = torch.argmax(filtered_images, axis=0)
+
+        # theta_xy = torch.argmax(filtered_images, axis=0)
+        # f_xy = torch.max(torch.pow(torch.abs(filtered_images), 0.5))
+
+        # psi_xy = torch.exp(1j * 2 * theta_xy)
+        # product = f_xy * psi_xy
+        # orientation_map = torch.where(f_xy > 0, product, 0)
 
         orientation_map = orientation_map.cpu().numpy()
+        # orientation_map = np.angle(orientation_map)
 
-        float_map = np.angle(orientation_map) / np.pi
-        color_map = cv2.applyColorMap(np.uint8(float_map * 255), cv2.COLORMAP_JET)
+        if color_mask.any():
+            color_mask = color_mask / 255
+            orientation_map = orientation_map * color_mask
 
-        return color_map, orientation_map
+        float_map = orientation_map / self.num_angles
+        # float_map = np.angle(orientation_map) / np.pi
+
+        color_map = cv2.applyColorMap(np.uint8(float_map * 255), cv2.COLORMAP_JET) # blue colors is smaller than red colors
+
+        image = cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB)
+        # color_map = cv2.addWeighted(image, 0.7, color_map, 0.3, 0)
+        return color_map, float_map * np.pi
 
     def equalize_image(self, image):
         img_yuv = cv2.cvtColor(image, cv2.COLOR_BGR2YUV)
@@ -112,13 +129,15 @@ class HairAngleCalculator:
 
         return angles
 
-    def get_line_ends(self, i, j, W, tang):
+    def get_line_ends(self, i, j, W, tang, im):
         if -1 <= tang and tang <= 1:
             begin = (i, int((-W/2) * tang + j + W/2))
             end = (i + W, int((W/2) * tang + j + W/2))
         else:
             begin = (int(i + W/2 + W/(2 * tang)), int(j + W//2))
             end = (int(i + W/2 - W/(2 * tang)), int(j - W//2))
+            # begin = (int(i + W/2 + W/(2 * tang)), int(j + W//2)) # original code
+            # end = (int(i + W/2 - W/(2 * tang)), int(j - W//2))
         return (begin, end)
 
     def visualize_angles(self, im, mask, angles, W):
@@ -134,7 +153,7 @@ class HairAngleCalculator:
                     idx_j = (j - 1) // W
                     if idx_j < angles.shape[0] and idx_i < angles.shape[1]:  # Safety check
                         tang = torch.tan(angles[idx_j, idx_i])
-                        (begin, end) = self.get_line_ends(i, j, W, tang.item())  # .item() is used to convert the tensor to a Python number
+                        (begin, end) = self.get_line_ends(i, j, W, tang.item(), im)  # .item() is used to convert the tensor to a Python number
                         xy_list.append((begin, end))
                         cv2.line(result, begin, end, color=(255,255,255))
                         #cv2.resize(result, im.shape[:2], result)
@@ -158,7 +177,98 @@ class HairAngleCalculator:
 
         return xy_list, result
 
-    def process_image(self, frame, hair_mask):
+    def create_xyz_strips(self, xy_list, depth_image, camera_info):
+        """
+        xy_list와 depth_image를 기반으로 하는 3D 스트립 배열을 생성합니다.
+
+        :param xy_list: 2D 좌표 목록 (x, y 쌍의 리스트)
+        :param depth_image: 깊이 정보를 담고 있는 이미지 (각 픽셀의 깊이 값)
+        :return: 시작점과 끝점을 담은 3D 좌표 리스트
+        """
+        xyz_strips = []
+        # 카메라 내부 파라미터 사용
+        fx = camera_info.K[0]
+        fy = camera_info.K[4]
+        cx = camera_info.K[2]
+        cy = camera_info.K[5]
+
+        v, u = np.indices((depth_image.shape[0], depth_image.shape[1]))
+        z = depth_image / 1000.0
+        x = (u - cx) * z / fx
+        y = (v - cy) * z / fy
+        xyz = np.concatenate((x[:,:, np.newaxis], y[:,:, np.newaxis], z[:,:,np.newaxis]), axis=2)
+
+        for begin, end in xy_list:
+            # 깊이 이미지에서 해당 xy 좌표의 깊이 값 추출
+            # print("xyz:", xyz)
+            # begin_x = np.clip(begin[1], 0, depth_image.shape[1]-1)
+            # begin_y = np.clip(begin[0], 0, depth_image.shape[0]-1)
+            # end_x = np.clip(end[1], 0, depth_image.shape[1]-1)
+            # end_y = np.clip(end[0], 0, depth_image.shape[0]-1)
+            begin_x = begin[1]
+            begin_y = begin[0]
+            end_x = end[1]
+            end_y = end[0]
+
+            # 시작점 (x, y, z)
+            try:
+                xyz_begin = np.array(xyz[begin_x, begin_y])
+                # 끝점 (x, y, z)
+                xyz_end = np.array(xyz[end_x, end_y])
+            except Exception as e:
+                continue
+
+            if np.abs(xyz_end[2] - xyz_begin[2]) > 0.2:
+                # print(xyz_end[2] - xyz_begin[2])
+                continue
+
+            # 시작점과 끝점 추가
+            xyz_strips.append((xyz_begin, xyz_end))
+
+        return np.asarray(xyz_strips)
+    #cal xy to xy in angle map
+    def cal_angle_map_xy(self, p_y, p_x, W):
+        a_y = int(p_y // W)
+        a_x = int(p_x // W)
+        return a_x, a_y
+
+    # calculate path
+    def cal_flow_path(self, p_0, mask, img, k, W, max_iter, angles):
+        (y, x) = img.shape[:2]
+        p_t = p_0
+        path_ = []
+        a_x, a_y = self.cal_angle_map_xy(p_t[0], p_t[1], W)
+        a_x = np.clip(a_x, 0, angles.shape[1]-1)
+        a_y = np.clip(a_y, 0, angles.shape[0]-1)
+        angle_t = angles[a_y, a_x]
+        i = 0
+        while (mask[p_t[0],p_t[1]] > 0 and p_t[1] < x-1 and p_t[0] < y-1 and i < max_iter):
+            path_.append(p_t[::-1].copy())
+
+            a_x, a_y = self.cal_angle_map_xy(p_t[0], p_t[1], W)
+            if a_x == angles.shape[1]:
+                a_x -= 1
+            if a_y == angles.shape[0]:
+                a_y -= 1
+
+            angle_t = angles[a_y, a_x]
+
+            p_t[1] = int(p_t[1] + k*np.cos(angle_t))
+            p_t[0] = int(p_t[0] + k*np.sin(angle_t))
+
+            if p_t[0]  < 0:
+                p_t[0] = 0
+            if p_t[1]  < 0:
+                p_t[1] = 0
+            if p_t[1]  > x-1:
+                p_t[1] = x-1
+            if p_t[0]  > y-1:
+                p_t[0] = y-1
+            i += 1
+
+        return path_
+
+    def process_image(self, frame, hair_mask, depth_image, camera_info):
         # resize_cef = 1
         # frame = cv2.resize(frame, None, fx=resize_cef, fy=resize_cef)
         # hair_mask = cv2.resize(hair_mask, None, fx=resize_cef, fy=resize_cef)
@@ -167,24 +277,27 @@ class HairAngleCalculator:
         gray_map=cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         # ret, otsu_map = cv2.threshold(gray_map, 0, 128, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-        cof_map = coh.coherence_filter(gray_map, sigma=5, str_sigma=15, blend=0.5, iter_n=3, gray_on=0)
+        cof_map = coh.coherence_filter(gray_map, sigma=3, str_sigma=15, blend=0.5, iter_n=3, gray_on=0)
         # cof_map = gray_map
 
-        angle_map = self.calculate_angles(torch.Tensor(cof_map), self.size)
+        angle_map = self.calculate_angles(torch.Tensor(gray_map), self.size)
         if self.mode == "strip":
             xy_list, angle_visual= self.visualize_angles(gray_map, torch.Tensor(hair_mask), angle_map, self.size)
+            xyz_strips = self.create_xyz_strips(xy_list, depth_image, camera_info)
+            
             debug_map = cv2.addWeighted(frame, 0.5, angle_visual,0.5, 2.2)
-            return debug_map
+            return debug_map, xyz_strips, angle_map
         elif self.mode == "gabor":
-            color_map, orientation_map = self.seg_hair(frame)
-            return color_map
+            color_map, orientation_map = self.seg_hair(gray_map, hair_mask)
+            # return cv2.cvtColor(cof_map, cv2.COLOR_GRAY2RGB), None
+            return color_map, orientation_map
         elif self.mode == "color":
             _, angle_color= self.visualize_color_angles(gray_map, torch.Tensor(hair_mask), angle_map, self.size)
 
             angle_color= angle_color / np.pi
             angle_color_map = cv2.applyColorMap(np.uint8(angle_color*255), cv2.COLORMAP_JET)
             # angle_color_map = cv2.GaussianBlur(angle_color_map, (self.size, self.size), 0)
-            return angle_color_map
+            return angle_color_map, None
         # angle_color_map = cv2.resize(angle_color_map, None, fx=1/resize_cef, fy=1/resize_cef)
 
         # debug_map = cv2.resize(debug_map, None, fx=1/resize_cef, fy=1/resize_cef)

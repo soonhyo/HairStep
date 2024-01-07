@@ -12,8 +12,8 @@ Panels:
         - /Image3
         - /Marker1
         - /Marker2
-        - /Marker2/Status1
         - /PointCloud22
+        - /MarkerArray1
       Splitter Ratio: 0.5
     Tree Height: 114
   - Class: rviz/Selection
@@ -124,13 +124,13 @@ Visualization Manager:
       Unreliable: false
       Value: true
     - Class: rviz/Marker
-      Enabled: true
+      Enabled: false
       Marker Topic: /estimated_plane
       Name: Marker
       Namespaces:
-        "": true
+        {}
       Queue Size: 100
-      Value: true
+      Value: false
     - Class: rviz/Marker
       Enabled: false
       Marker Topic: /estimated_sphere
@@ -167,6 +167,14 @@ Visualization Manager:
       Use Fixed Frame: true
       Use rainbow: true
       Value: false
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /strips
+      Name: MarkerArray
+      Namespaces:
+        "": true
+      Queue Size: 100
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
