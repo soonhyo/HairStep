@@ -27,24 +27,30 @@ from scipy.special import comb
 
 BLACK_COLOR = (0, 0, 0) # black
 
-
 class RosApp(App):
     def __init__(self):
         super(RosApp, self).__init__()
         rospy.init_node('mediapipe_ros_node', anonymous=True)
         self.bridge = CvBridge()
-        self.strand_pub = rospy.Publisher("segmented_image", Image, queue_size=1)
-        self.hair_pub = rospy.Publisher("segmented_hair_image", Image, queue_size=1)
-        self.depth_pub = rospy.Publisher("masked_depth_image", Image, queue_size=1)
-        self.cloud_pub = rospy.Publisher("segmented_cloud", PointCloud2, queue_size=1)
-        self.plane_pub = rospy.Publisher('estimated_plane', Marker, queue_size=10)
-        self.sphere_pub = rospy.Publisher('estimated_sphere', Marker, queue_size=10)
-        self.strips_pub = rospy.Publisher('strips', MarkerArray, queue_size=1)
-
         self.opt = MyBaseOptions().parse()
 
+        self.camera_num = self.opt.camera_id
+        if self.camera_num == 0:
+            self.camera_ns = "camera"
+        else:
+            self.camera_ns = "camera" + str(self.camera_num)
+
+        rospy.loginfo("camera_ns: "+self.camera_ns)
+
+        self.strand_pub = rospy.Publisher("segmented_image"+"/"+str(self.camera_num), Image, queue_size=1)
+        self.hair_pub = rospy.Publisher("segmented_hair_image"+"/"+str(self.camera_num), Image, queue_size=1)
+        self.depth_pub = rospy.Publisher("masked_depth_image"+"/"+str(self.camera_num), Image, queue_size=1)
+        self.cloud_pub = rospy.Publisher("segmented_cloud"+"/"+str(self.camera_num), PointCloud2, queue_size=1)
+        self.plane_pub = rospy.Publisher('estimated_plane'+"/"+str(self.camera_num), Marker, queue_size=10)
+        self.sphere_pub = rospy.Publisher('estimated_sphere'+"/"+str(self.camera_num), Marker, queue_size=10)
+        self.strips_pub = rospy.Publisher('strips'+"/"+str(self.camera_num), MarkerArray, queue_size=1)
+
         self.rate = rospy.Rate(30)
-        self.frame_id = "camera_color_optical_frame"
 
         self.cv_image = None
         self.cv_depth = None
@@ -58,9 +64,11 @@ class RosApp(App):
         self.mode = "strip"
         self.size = 15
         self.hair_angle_calculator = HairAngleCalculator(size=self.size, mode=self.mode)
-        rospy.Subscriber("/camera/color/image_rect_color", Image, self.image_callback)
-        rospy.Subscriber("/camera/aligned_depth_to_color/image_raw", Image, self.depth_callback)
-        rospy.Subscriber("/camera/aligned_depth_to_color/camera_info", CameraInfo, self.camera_info_callback)
+        self.frame_id = self.camera_ns+"_color_optical_frame"
+
+        rospy.Subscriber("/"+self.camera_ns+"/color/image_rect_color", Image, self.image_callback)
+        rospy.Subscriber("/"+self.camera_ns+"/aligned_depth_to_color/image_raw", Image, self.depth_callback)
+        rospy.Subscriber("/"+self.camera_ns+"/aligned_depth_to_color/camera_info", CameraInfo, self.camera_info_callback)
 
     def image_callback(self, data):
         try:
@@ -220,9 +228,6 @@ class RosApp(App):
                     masked_depth = self.apply_depth_mask(self.cv_depth, self.output_image)
                     self.output_image, masked_depth = self.refine_mask_with_depth(self.output_image, masked_depth, self.distance)
 
-                    # strand_map = img2strand(self.opt, self.cv_image, self.output_image)
-                    # strand_rgb = cv2.cvtColor(strand_map, cv2.COLOR_BGR2RGB)
-
                     if self.mode == "strip":
                         strand_rgb, xyz_strips, angle_map = self.hair_angle_calculator.process_image(self.cv_image, self.output_image, masked_depth, self.camera_info)
                         # create_and_publish_strips_markers(self.strips_pub, self.frame_id, xyz_strips)
@@ -232,6 +237,9 @@ class RosApp(App):
                         strand_rgb, orientation = self.hair_angle_calculator.process_image(self.cv_image, self.output_image, masked_depth, self.camera_info)
                         strands = self.create_hair_strands_gabor(orientation)
                         strand_rgb = self.visualize_hair_strands(strand_rgb, strands)
+
+                    # strand_map = img2strand(self.opt, self.cv_image, self.output_image)
+                    # strand_rgb = cv2.cvtColor(strand_map, cv2.COLOR_BGR2RGB)
 
                     masked_depth_msg= self.make_depth_msg(masked_depth, time_now)
                     try:
