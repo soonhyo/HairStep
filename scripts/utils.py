@@ -12,6 +12,8 @@ from scipy.interpolate import griddata
 
 import matplotlib.pyplot as plt
 
+import colorsys
+
 class HairAngleCalculator:
     def __init__(self, size=15, mode="strip"):
         self.size = size
@@ -140,6 +142,23 @@ class HairAngleCalculator:
             # end = (int(i + W/2 - W/(2 * tang)), int(j - W//2))
         return (begin, end)
 
+    def get_3d_point(self, point ,depth_image, camera_info):
+        fx = camera_info.K[0]
+        fy = camera_info.K[4]
+        cx = camera_info.K[2]
+        cy = camera_info.K[5]
+
+        y = np.clip(point[1], 0, depth_image.shape[0]-1)
+        x = np.clip(point[0], 0, depth_image.shape[1]-1)
+
+        depth = depth_image[y, x]
+
+        z = depth / 1000.0  # 뎁스 값을 미터 단위로 변환
+        x_3d = (x - cx) * z / fx
+        y_3d = (y - cy) * z / fy
+
+        return np.array([x_3d, y_3d, z])
+
     def visualize_angles(self, im, mask, angles, W):
         (y, x) = im.shape[:2]
         xy_list = []
@@ -176,6 +195,60 @@ class HairAngleCalculator:
         # print(result.shape)
 
         return xy_list, result
+
+    def visualize_3d_angles(self, im, mask, angles, depth_image, camera_info, W):
+        (y, x) = im.shape[:2]
+        result = cv2.cvtColor(np.zeros(im.shape[:2], np.uint8), cv2.COLOR_GRAY2RGB)
+        mask_threshold = (W-1)**2
+        for i in range(1, x, W):
+            for j in range(1, y, W):
+                radian = torch.sum(mask[j - 1:j + W, i-1:i+W])
+                if radian > mask_threshold:
+                    idx_i = (i - 1) // W
+                    idx_j = (j - 1) // W
+                    if idx_j < angles.shape[0] and idx_i < angles.shape[1]:  # Safety check
+                        tang = torch.tan(angles[idx_j, idx_i])
+                        (begin, end) = self.get_line_ends(i, j, W, tang.item(), im)  # .item() is used to convert the tensor to a Python number
+                        begin_3d = self.get_3d_point(begin, depth_image, camera_info)
+                        end_3d = self.get_3d_point(end, depth_image, camera_info)
+
+                        direction_vector = end_3d - begin_3d
+                        if np.linalg.norm(direction_vector) != 0:
+                            direction_vector /= np.linalg.norm(direction_vector)
+                        color = self.vector_to_hsv_color(direction_vector)
+                        result[j-1:j+W, i-1:i+W] = color
+
+                        #cv2.resize(result, im.shape[:2], result)
+        return result
+
+    def vector_to_hsv_color(self,vec3d):
+        # 벡터의 방향을 HSV 색상으로 변환
+        azimuth = np.arctan2(vec3d[1], vec3d[0]) / (2 * np.pi) + 0.5
+        elevation = np.arctan2(vec3d[2], np.sqrt(vec3d[0]**2 + vec3d[1]**2)) / np.pi + 0.5
+        if np.linalg.norm(vec3d) != 0:
+            magnitude = np.linalg.norm(vec3d)
+        else:
+            magnitude = 0
+        hue = azimuth  # 방향에 따른 색상
+        saturation = elevation  # 높이에 따른 채도
+        value = magnitude
+
+        color = self.hsv_to_rgb(hue, saturation, value)
+        return color
+
+    def hsv_to_rgb(self, h, s, v):
+        # HSV를 RGB로 변환
+        r, g, b = colorsys.hsv_to_rgb(h, s, v)
+        return (int(r * 255), int(g * 255), int(b * 255))
+
+    def vector_to_rgb_color(self, vec3d):
+        # 벡터의 각 성분을 RGB 색상으로 변환
+        r = np.clip(vec3d[0], 0, 1)
+        g = np.clip(vec3d[1], 0, 1)
+        b = np.clip(vec3d[2], 0, 1)
+
+        return (int(r * 255), int(g * 255), int(b * 255))
+
 
     def create_xyz_strips(self, xy_list, depth_image, camera_info):
         """
@@ -296,8 +369,12 @@ class HairAngleCalculator:
 
             angle_color= angle_color / np.pi
             angle_color_map = cv2.applyColorMap(np.uint8(angle_color*255), cv2.COLORMAP_JET)
+            # angle_color_map v= cv2.GaussianBlur(angle_color_map, (self.size, self.size), 0)
+            return angle_color_map, xyz_strips, angle_map
+        elif self.mode == "3d_color":
+            angle_color= self.visualize_3d_angles(gray_map, torch.Tensor(hair_mask), angle_map, depth_image, camera_info, self.size)
             # angle_color_map = cv2.GaussianBlur(angle_color_map, (self.size, self.size), 0)
-            return angle_color_map, None
+            return angle_color, xyz_strips, angle_map
         # angle_color_map = cv2.resize(angle_color_map, None, fx=1/resize_cef, fy=1/resize_cef)
 
         # debug_map = cv2.resize(debug_map, None, fx=1/resize_cef, fy=1/resize_cef)

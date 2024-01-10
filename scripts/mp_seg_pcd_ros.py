@@ -36,9 +36,8 @@ class RosApp(App):
 
         self.camera_num = self.opt.camera_id
         if self.camera_num == 0:
-            self.camera_ns = "camera"
-        else:
-            self.camera_ns = "camera" + str(self.camera_num)
+            self.camera_num = ""
+        self.camera_ns = "camera" + str(self.camera_num)
 
         rospy.loginfo("camera_ns: "+self.camera_ns)
 
@@ -61,7 +60,7 @@ class RosApp(App):
         self.create_pcd = None
         # self.refiner = None
         self.sph = pyrsc.Sphere()
-        self.mode = "strip"
+        self.mode = "3d_color"
         self.size = 15
         self.hair_angle_calculator = HairAngleCalculator(size=self.size, mode=self.mode)
         self.frame_id = self.camera_ns+"_color_optical_frame"
@@ -231,12 +230,16 @@ class RosApp(App):
                     if self.mode == "strip":
                         strand_rgb, xyz_strips, angle_map = self.hair_angle_calculator.process_image(self.cv_image, self.output_image, masked_depth, self.camera_info)
                         # create_and_publish_strips_markers(self.strips_pub, self.frame_id, xyz_strips)
-                        strand_rgb, strands = self.create_hair_strands(strand_rgb, self.output_image, angle_map.to("cpu").numpy().copy(), W=self.size, n_strands=50, strand_length=50, distance=10)
-                        strand_rgb = cv2.addWeighted(self.cv_image, 0.5, strand_rgb, 0.5, 2.2)
+                        # strand_rgb, strands = self.create_hair_strands(strand_rgb, self.output_image, angle_map.to("cpu").numpy().copy(), W=self.size, n_strands=50, strand_length=50, distance=10)
+                        # strand_rgb = cv2.addWeighted(self.cv_image, 0.5, strand_rgb, 0.5, 2.2)
                     if self.mode == "gabor":
                         strand_rgb, orientation = self.hair_angle_calculator.process_image(self.cv_image, self.output_image, masked_depth, self.camera_info)
                         strands = self.create_hair_strands_gabor(orientation)
                         strand_rgb = self.visualize_hair_strands(strand_rgb, strands)
+                    if self.mode == "color":
+                        strand_rgb, xyz_strips, angle_map = self.hair_angle_calculator.process_image(self.cv_image, self.output_image, masked_depth, self.camera_info)
+                    if self.mode == "3d_color":
+                        strand_rgb, xyz_strips, angle_map = self.hair_angle_calculator.process_image(self.cv_image, self.output_image, masked_depth, self.camera_info)
 
                     # strand_map = img2strand(self.opt, self.cv_image, self.output_image)
                     # strand_rgb = cv2.cvtColor(strand_map, cv2.COLOR_BGR2RGB)
