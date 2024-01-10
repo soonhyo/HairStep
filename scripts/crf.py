@@ -45,7 +45,7 @@ class CRFSegmentationRefiner:
         Q = crf.inference(5)
 
         # 결과 추출
-        refined_mask = np.argmax(Q, axis=0).reshape((h, w)) * 255
+        refined_mask = np.argmax(Q, axis=0).reshape((h, w)).astype(np.uint8) * 255
 
         return refined_mask
 

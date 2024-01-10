@@ -20,7 +20,7 @@ import pyransac3d as pyrsc
 # from scripts.mp_segmenter import App
 from scripts.mp_seg_onnx import App
 from scripts.create_pcd import CreatePointCloud
-# from scripts.crf import CRFSegmentationRefiner
+#from scripts.crf import CRFSegmentationRefiner
 from scripts.utils import HairAngleCalculator
 from scripts.ros_utils import *
 from scipy.special import comb
@@ -126,11 +126,12 @@ class RosApp(App):
 
         for x in start_x:
             for y in start_y:
-                _path = self.hair_angle_calculator.cal_flow_path([int(y), int(x)], hair_mask, image, distance, W, strand_length, angle_map)
-                if len(_path) > 0:
-                    strands.append(np.asarray(_path))
+                if hair_mask[int(y), int(x)] > 0:
+                    _path = self.hair_angle_calculator.cal_flow_path([int(y), int(x)], hair_mask, image, distance, W, strand_length, angle_map)
+                    if len(_path) > 0:
+                        strands.append(np.asarray(_path))
 
-        strands = np.asarray(strands)
+        # strands = np.asarray(strands)
         # strands = strands.astype(np.int16)
         img_edge = image.astype(np.uint8) * hair_mask[:,:,np.newaxis] * 255
 
@@ -189,7 +190,7 @@ class RosApp(App):
         for i in range(n + 1):
             binom = comb(n, i) * (t ** i) * ((1 - t) ** (n - i))
             curve += np.outer(binom, points[i])  # 변경된 부분
-        return curve.astype(np.int)
+        return curve.astype(np.int16)
 
     def approximate_bezier(self, strands, n_points=10):
         """
@@ -224,9 +225,9 @@ class RosApp(App):
 
                     if self.mode == "strip":
                         strand_rgb, xyz_strips, angle_map = self.hair_angle_calculator.process_image(self.cv_image, self.output_image, masked_depth, self.camera_info)
-                        create_and_publish_strips_markers(self.strips_pub, self.frame_id, xyz_strips)
+                        # create_and_publish_strips_markers(self.strips_pub, self.frame_id, xyz_strips)
                         strand_rgb, strands = self.create_hair_strands(strand_rgb, self.output_image, angle_map.to("cpu").numpy().copy(), W=self.size, n_strands=50, strand_length=50, distance=10)
-
+                        strand_rgb = cv2.addWeighted(self.cv_image, 0.5, strand_rgb, 0.5, 2.2)
                     if self.mode == "gabor":
                         strand_rgb, orientation = self.hair_angle_calculator.process_image(self.cv_image, self.output_image, masked_depth, self.camera_info)
                         strands = self.create_hair_strands_gabor(orientation)
@@ -248,7 +249,6 @@ class RosApp(App):
                         #     sph_msg = create_sphere_marker(center, radius, self.frame_id)
                         #     self.sphere_pub.publish(sph_msg)
                         estimated_plane, plane_inliers = self.ransac(closest_cloud[:,:3][::4], 0.3, 3, 50)
-
                         if (estimated_plane is not None) and (plane_inliers is not None):
                             plane_msg, plane_inliers_msg = create_plane_and_inliers_markers(estimated_plane, plane_inliers, closest_cloud[:,:3], (0.5, 0.5, 0.001), frame_id=self.frame_id)
                             self.plane_pub.publish(plane_msg)

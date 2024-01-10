@@ -277,15 +277,15 @@ class HairAngleCalculator:
         gray_map=cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         # ret, otsu_map = cv2.threshold(gray_map, 0, 128, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-        cof_map = coh.coherence_filter(gray_map, sigma=3, str_sigma=15, blend=0.5, iter_n=3, gray_on=0)
+        #cof_map = coh.coherence_filter(gray_map, sigma=3, str_sigma=15, blend=0.5, iter_n=3, gray_on=0)
         # cof_map = gray_map
-
+        xyz_strips = None
+        debug_map = None
         angle_map = self.calculate_angles(torch.Tensor(gray_map), self.size)
         if self.mode == "strip":
             xy_list, angle_visual= self.visualize_angles(gray_map, torch.Tensor(hair_mask), angle_map, self.size)
-            xyz_strips = self.create_xyz_strips(xy_list, depth_image, camera_info)
-            
-            debug_map = cv2.addWeighted(frame, 0.5, angle_visual,0.5, 2.2)
+            # xyz_strips = self.create_xyz_strips(xy_list, depth_image, camera_info)
+            debug_map = cv2.addWeighted(frame, 0.5, angle_visual, 0.5, 2.2)
             return debug_map, xyz_strips, angle_map
         elif self.mode == "gabor":
             color_map, orientation_map = self.seg_hair(gray_map, hair_mask)
