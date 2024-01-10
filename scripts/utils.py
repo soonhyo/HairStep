@@ -16,7 +16,7 @@ import colorsys
 
 class HairAngleCalculator:
     def __init__(self, size=15, mode="strip"):
-        self.size = size
+        self.size = 15
         self.mode = mode
 
         self.padding = self.size//2
@@ -41,7 +41,7 @@ class HairAngleCalculator:
         image = torch.from_numpy(gray).float().unsqueeze(0).unsqueeze(0).to(self.device)
         num_angles = self.num_angles
         orientations = torch.linspace(0, np.pi, num_angles).to(self.device)
-        gabors = self.create_gabor_batch(self.size, 0.3, orientations, 0.8, 1, self.psi).to(self.device) # 15, 0.3, 180, 0.8, 1, 0
+        gabors = self.create_gabor_batch(self.size, 10, orientations, 20, 1, self.psi).to(self.device) # 15, 0.3, 180, 0.8, 1, 0 # 15 5 180 10 1
 
         filtered_images = F.conv2d(image, gabors, padding=self.padding).squeeze(0)
         orientation_map = torch.argmax(filtered_images, axis=0)
@@ -62,12 +62,13 @@ class HairAngleCalculator:
 
         float_map = orientation_map / self.num_angles
         # float_map = np.angle(orientation_map) / np.pi
-
-        color_map = cv2.applyColorMap(np.uint8(float_map * 255), cv2.COLORMAP_JET) # blue colors is smaller than red colors
+        print("max:", np.max(float_map*np.pi))
+        print("min:", np.min(float_map*np.pi))
+        color_map = cv2.applyColorMap(np.uint8(float_map*255), cv2.COLORMAP_JET) # blue colors is smaller than red colors
 
         image = cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB)
         # color_map = cv2.addWeighted(image, 0.7, color_map, 0.3, 0)
-        return color_map, float_map * np.pi
+        return color_map, float_map*np.pi
 
     def equalize_image(self, image):
         img_yuv = cv2.cvtColor(image, cv2.COLOR_BGR2YUV)

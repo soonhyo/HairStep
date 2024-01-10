@@ -1,7 +1,7 @@
 import time
 from lib.options import BaseOptions as MyBaseOptions
 # from scripts.mycam_mask import img2masks
-from scripts.mycam_strand import img2strand
+from scripts.mycam_strand import *
 # from scripts.img2depth import img2depth
 
 import rospy
@@ -24,6 +24,8 @@ from scripts.create_pcd import CreatePointCloud
 from scripts.utils import HairAngleCalculator
 from scripts.ros_utils import *
 from scipy.special import comb
+
+from scripts.normal_map import *
 
 BLACK_COLOR = (0, 0, 0) # black
 
@@ -60,7 +62,7 @@ class RosApp(App):
         self.create_pcd = None
         # self.refiner = None
         self.sph = pyrsc.Sphere()
-        self.mode = "3d_color"
+        self.mode = "nn"
         self.size = 15
         self.hair_angle_calculator = HairAngleCalculator(size=self.size, mode=self.mode)
         self.frame_id = self.camera_ns+"_color_optical_frame"
@@ -226,23 +228,30 @@ class RosApp(App):
                     # self.output_image = self.refiner.refine(self.cv_image, self.output_image)
                     masked_depth = self.apply_depth_mask(self.cv_depth, self.output_image)
                     self.output_image, masked_depth = self.refine_mask_with_depth(self.output_image, masked_depth, self.distance)
+                    normal_map_vis, normal_map = compute_normal_map(masked_depth)
 
                     if self.mode == "strip":
                         strand_rgb, xyz_strips, angle_map = self.hair_angle_calculator.process_image(self.cv_image, self.output_image, masked_depth, self.camera_info)
                         # create_and_publish_strips_markers(self.strips_pub, self.frame_id, xyz_strips)
-                        # strand_rgb, strands = self.create_hair_strands(strand_rgb, self.output_image, angle_map.to("cpu").numpy().copy(), W=self.size, n_strands=50, strand_length=50, distance=10)
-                        # strand_rgb = cv2.addWeighted(self.cv_image, 0.5, strand_rgb, 0.5, 2.2)
+                        strand_rgb, strands = self.create_hair_strands(strand_rgb, self.output_image, angle_map.to("cpu").numpy().copy(), W=self.size, n_strands=50, strand_length=50, distance=10)
+                        strand_rgb = cv2.addWeighted(self.cv_image, 0.5, strand_rgb, 0.5, 2.2)
                     if self.mode == "gabor":
-                        strand_rgb, orientation = self.hair_angle_calculator.process_image(self.cv_image, self.output_image, masked_depth, self.camera_info)
-                        strands = self.create_hair_strands_gabor(orientation)
-                        strand_rgb = self.visualize_hair_strands(strand_rgb, strands)
+                        strand_rgb, angle_map = self.hair_angle_calculator.process_image(self.cv_image, self.output_image, masked_depth, self.camera_info)
+                        # strands = self.create_hair_strands_gabor(angle_map)
+                        strand_rgb, strands = self.create_hair_strands(strand_rgb, self.output_image, angle_map, W=1, n_strands=50, strand_length=50, distance=5)
+                        # strand_rgb = self.visualize_hair_strands(strand_rgb, strands)
                     if self.mode == "color":
                         strand_rgb, xyz_strips, angle_map = self.hair_angle_calculator.process_image(self.cv_image, self.output_image, masked_depth, self.camera_info)
                     if self.mode == "3d_color":
                         strand_rgb, xyz_strips, angle_map = self.hair_angle_calculator.process_image(self.cv_image, self.output_image, masked_depth, self.camera_info)
+                    if self.mode == "nn":
+                        strand_map, angle_map = img2strand(self.opt, self.cv_image, self.output_image)
+                        # strand_rgb = cv2.cvtColor(strand_map, cv2.COLOR_BGR2RGB)
+                        # strand_rgb, strands = self.create_hair_strands(self.cv_image, self.output_image, angle_map, W=1, n_strands=50, strand_length=50, distance=5)
+                        # strand_rgb = cv2.addWeighted(self.cv_image, 0.5, strand_rgb, 0.5, 2.2)
 
-                    # strand_map = img2strand(self.opt, self.cv_image, self.output_image)
-                    # strand_rgb = cv2.cvtColor(strand_map, cv2.COLOR_BGR2RGB)
+                        orientation_map_3d = compute_3d_orientation_map(normal_map, angle_map, self.output_image)
+                        strand_rgb = visualize_orientation_map(orientation_map_3d.to("cpu").numpy())
 
                     masked_depth_msg= self.make_depth_msg(masked_depth, time_now)
                     try:
