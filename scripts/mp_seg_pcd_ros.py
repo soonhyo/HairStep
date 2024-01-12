@@ -36,20 +36,17 @@ class RosApp(App):
         self.bridge = CvBridge()
         self.opt = MyBaseOptions().parse()
 
-        self.camera_num = self.opt.camera_id
-        if self.camera_num == 0:
-            self.camera_num = ""
-        self.camera_ns = "camera" + str(self.camera_num)
+        self.camera_ns = self.opt.camera_name
 
         rospy.loginfo("camera_ns: "+self.camera_ns)
 
-        self.strand_pub = rospy.Publisher("segmented_image"+"/"+str(self.camera_num), Image, queue_size=1)
-        self.hair_pub = rospy.Publisher("segmented_hair_image"+"/"+str(self.camera_num), Image, queue_size=1)
-        self.depth_pub = rospy.Publisher("masked_depth_image"+"/"+str(self.camera_num), Image, queue_size=1)
-        self.cloud_pub = rospy.Publisher("segmented_cloud"+"/"+str(self.camera_num), PointCloud2, queue_size=1)
-        self.plane_pub = rospy.Publisher('estimated_plane'+"/"+str(self.camera_num), Marker, queue_size=10)
-        self.sphere_pub = rospy.Publisher('estimated_sphere'+"/"+str(self.camera_num), Marker, queue_size=10)
-        self.strips_pub = rospy.Publisher('strips'+"/"+str(self.camera_num), MarkerArray, queue_size=1)
+        self.strand_pub = rospy.Publisher("segmented_image"+"/"+str(self.camera_ns), Image, queue_size=1)
+        self.hair_pub = rospy.Publisher("segmented_hair_image"+"/"+str(self.camera_ns), Image, queue_size=1)
+        self.depth_pub = rospy.Publisher("masked_depth_image"+"/"+str(self.camera_ns), Image, queue_size=1)
+        self.cloud_pub = rospy.Publisher("segmented_cloud"+"/"+str(self.camera_ns), PointCloud2, queue_size=1)
+        self.plane_pub = rospy.Publisher('estimated_plane'+"/"+str(self.camera_ns), Marker, queue_size=10)
+        self.sphere_pub = rospy.Publisher('estimated_sphere'+"/"+str(self.camera_ns), Marker, queue_size=10)
+        self.strips_pub = rospy.Publisher('strips'+"/"+str(self.camera_ns), MarkerArray, queue_size=1)
 
         self.rate = rospy.Rate(30)
 
@@ -58,7 +55,7 @@ class RosApp(App):
         self.camera_info = None
         self.points = None
 
-        self.distance = 0.8
+        self.distance = 1.2
         self.create_pcd = None
         # self.refiner = None
         self.sph = pyrsc.Sphere()
@@ -67,8 +64,14 @@ class RosApp(App):
         self.hair_angle_calculator = HairAngleCalculator(size=self.size, mode=self.mode)
         self.frame_id = self.camera_ns+"_color_optical_frame"
 
-        rospy.Subscriber("/"+self.camera_ns+"/color/image_rect_color", Image, self.image_callback)
-        rospy.Subscriber("/"+self.camera_ns+"/aligned_depth_to_color/image_raw", Image, self.depth_callback)
+        self.decompressed = self.opt.decompressed
+
+        if self.decompressed:
+            rospy.Subscriber("/"+self.camera_ns+"/color/image_rect_color/decompressed", Image, self.image_callback)
+            rospy.Subscriber("/"+self.camera_ns+"/aligned_depth_to_color/image_raw/decompressed", Image, self.depth_callback)
+        else:
+            rospy.Subscriber("/"+self.camera_ns+"/color/image_rect_color/decompressed", Image, self.image_callback)
+            rospy.Subscriber("/"+self.camera_ns+"/aligned_depth_to_color/image_raw/decompressed", Image, self.depth_callback)
         rospy.Subscriber("/"+self.camera_ns+"/aligned_depth_to_color/camera_info", CameraInfo, self.camera_info_callback)
 
     def image_callback(self, data):

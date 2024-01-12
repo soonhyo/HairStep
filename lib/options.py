@@ -94,8 +94,11 @@ class BaseOptions():
                             help='Decrease learning rate at these epochs.')
         parser.add_argument('--gamma', type=float, default=0.1, help='LR is multiplied by gamma on schedule.')
 
-        parser.add_argument("--camera_id", type=int, default=0,
+        parser.add_argument("--camera_name", type=str, default="camera",
                             help="camera_id")
+
+        parser.add_argument("--decompressed", type=int, default=0,
+                            help="decompressed rgb and depth image")
 
         # special tasks
         self.initialized = True
