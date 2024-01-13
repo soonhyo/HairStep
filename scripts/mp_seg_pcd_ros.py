@@ -49,11 +49,11 @@ class RosApp(App):
         self.depth_2d_pub = rospy.Publisher("2d_masked_depth_image"+"/"+str(self.camera_ns), Image, queue_size=1)
         self.cloud_pub = rospy.Publisher("segmented_cloud"+"/"+str(self.camera_ns), PointCloud2, queue_size=1)
         
-        self.plane_pub = rospy.Publisher('estimated_plane'+"/"+str(self.camera_ns), Marker, queue_size=10)
-        self.sphere_pub = rospy.Publisher('estimated_sphere'+"/"+str(self.camera_ns), Marker, queue_size=10)
+        self.plane_pub = rospy.Publisher('estimated_plane'+"/"+str(self.camera_ns), Marker, queue_size=1)
+        self.sphere_pub = rospy.Publisher('estimated_sphere'+"/"+str(self.camera_ns), Marker, queue_size=1)
         self.strips_pub = rospy.Publisher('strips'+"/"+str(self.camera_ns), MarkerArray, queue_size=1)
 
-        self.rate = rospy.Rate(30)
+        self.rate = rospy.Rate(60)
 
         self.cv_image = None
         self.cv_depth = None
@@ -261,10 +261,10 @@ class RosApp(App):
                         strand_rgb, xyz_strips, angle_map = self.hair_angle_calculator.process_image(self.cv_image, self.output_image, masked_depth, self.camera_info)
                     if self.mode == "nn":
                         strand_map, angle_map = img2strand(self.opt, self.cv_image, self.output_image)
-                        # depth_2d_map = img2depth(self.opt, self.cv_image, self.output_image)
-                        # strand_rgb = cv2.cvtColor(strand_map, cv2.COLOR_BGR2RGB)
+                        strand_rgb = cv2.cvtColor(strand_map, cv2.COLOR_BGR2RGB)
                         strand_rgb, strands = self.create_hair_strands(self.cv_image, self.output_image, angle_map, W=1, n_strands=50, strand_length=50, distance=5)
                         strand_rgb = cv2.addWeighted(self.cv_image, 0.5, strand_rgb, 0.5, 2.2)
+                        # depth_2d_map = img2depth(self.opt, self.cv_image, self.output_image)
                         # depth_map_2d_msg= self.bridge.cv2_to_imgmsg(depth_2d_map, "bgr8")
                         # self.depth_2d_pub.publish(depth_map_2d_msg, "passthrough")
 
@@ -281,27 +281,29 @@ class RosApp(App):
                         indices= self.create_pcd.filter_points_in_distance_range(points[:,:3], 0.01, self.distance)
                         closest_cloud = points[indices]
 
+                        largest_cloud_msg = pc2.create_cloud(header, fields, closest_cloud)
+                        if largest_cloud_msg is not None:
+                            self.cloud_pub.publish(largest_cloud_msg)
+
+                        # ransac
                         # if len(closest_cloud[:,:3]) > 4:
                         #     center, radius, sph_inliers = self.sph.fit(closest_cloud[:,:3].astype(np.float32),thresh=0.05, maxIteration=100)
                         # if (center is not None) and (radius is not None):
                         #     sph_msg = create_sphere_marker(center, radius, self.frame_id)
                         #     self.sphere_pub.publish(sph_msg)
-                        estimated_plane, plane_inliers = self.ransac(closest_cloud[:,:3][::4], 0.3, 3, 50)
-                        if (estimated_plane is not None) and (plane_inliers is not None):
-                            plane_msg, plane_inliers_msg = create_plane_and_inliers_markers(estimated_plane, plane_inliers, closest_cloud[:,:3], (0.5, 0.5, 0.001), frame_id=self.frame_id)
-                            self.plane_pub.publish(plane_msg)
+                        # estimated_plane, plane_inliers = self.ransac(closest_cloud[:,:3][::4], 0.3, 3, 50)
 
-                        largest_cloud_msg = pc2.create_cloud(header, fields, closest_cloud)
+                        # if (estimated_plane is not None) and (plane_inliers is not None):
+                        #     plane_msg, plane_inliers_msg = create_plane_and_inliers_markers(estimated_plane, plane_inliers, closest_cloud[:,:3], (0.5, 0.5, 0.001), frame_id=self.frame_id)
+                        #     self.plane_pub.publish(plane_msg)
+
 
                         hair_mask_msg = self.bridge.cv2_to_imgmsg(self.output_image, "passthrough")
                         hair_mask_msg.header =  Header(stamp=time_now)
-                        if largest_cloud_msg is not None:
-                            self.cloud_pub.publish(largest_cloud_msg)
                         self.hair_mask_pub.publish(hair_mask_msg)
                         self.depth_pub.publish(masked_depth_msg)
                         self.strand_pub.publish(ros_image)
                         self.hair_pub.publish(self.apply_hair_mask(self.cv_image, self.output_image, time_now))
-
                     except CvBridgeError as e:
                         rospy.logerr(e)
             self.rate.sleep()
