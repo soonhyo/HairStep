@@ -39,7 +39,7 @@ class CRFSegmentationRefiner:
 
         # Pairwise potentials 추가
         crf.addPairwiseGaussian(sxy=(3, 3), compat=3)
-        crf.addPairwiseBilateral(sxy=(100, 100), srgb=(13, 13, 13), rgbim=resized_image, compat=10)
+        crf.addPairwiseBilateral(sxy=(5, 5), srgb=(13, 13, 13), rgbim=resized_image, compat=10)
 
         # CRF 최적화
         Q = crf.inference(5)

@@ -20,12 +20,14 @@ import pyransac3d as pyrsc
 # from scripts.mp_segmenter import App
 from scripts.mp_seg_onnx import App
 from scripts.create_pcd import CreatePointCloud
-#from scripts.crf import CRFSegmentationRefiner
+from scripts.crf import CRFSegmentationRefiner
 from scripts.utils import HairAngleCalculator
 from scripts.ros_utils import *
 from scipy.special import comb
 
 from scripts.normal_map import *
+
+import segmentation_refinement as refine
 
 BLACK_COLOR = (0, 0, 0) # black
 
@@ -42,6 +44,7 @@ class RosApp(App):
 
         self.strand_pub = rospy.Publisher("segmented_image"+"/"+str(self.camera_ns), Image, queue_size=1)
         self.hair_pub = rospy.Publisher("segmented_hair_image"+"/"+str(self.camera_ns), Image, queue_size=1)
+        self.hair_mask_pub = rospy.Publisher("segmented_hair_mask_image"+"/"+str(self.camera_ns), Image, queue_size=1)
         self.depth_pub = rospy.Publisher("masked_depth_image"+"/"+str(self.camera_ns), Image, queue_size=1)
         self.cloud_pub = rospy.Publisher("segmented_cloud"+"/"+str(self.camera_ns), PointCloud2, queue_size=1)
         self.plane_pub = rospy.Publisher('estimated_plane'+"/"+str(self.camera_ns), Marker, queue_size=10)
@@ -70,8 +73,8 @@ class RosApp(App):
             rospy.Subscriber("/"+self.camera_ns+"/color/image_rect_color/decompressed", Image, self.image_callback)
             rospy.Subscriber("/"+self.camera_ns+"/aligned_depth_to_color/image_raw/decompressed", Image, self.depth_callback)
         else:
-            rospy.Subscriber("/"+self.camera_ns+"/color/image_rect_color/decompressed", Image, self.image_callback)
-            rospy.Subscriber("/"+self.camera_ns+"/aligned_depth_to_color/image_raw/decompressed", Image, self.depth_callback)
+            rospy.Subscriber("/"+self.camera_ns+"/color/image_rect_color", Image, self.image_callback)
+            rospy.Subscriber("/"+self.camera_ns+"/aligned_depth_to_color/image_raw", Image, self.depth_callback)
         rospy.Subscriber("/"+self.camera_ns+"/aligned_depth_to_color/camera_info", CameraInfo, self.camera_info_callback)
 
     def image_callback(self, data):
@@ -148,7 +151,7 @@ class RosApp(App):
         img_edge = image.astype(np.uint8) * hair_mask[:,:,np.newaxis] * 255
 
         if len(strands) > 0:
-            strands = self.approximate_bezier(strands, 50)
+            strands = self.approximate_bezier(strands, strand_length)
             np.random.seed(42)
             color_list = np.random.randint(255, size=(len(strands), 3))
             for i, path in enumerate(strands):
@@ -156,7 +159,7 @@ class RosApp(App):
                 color = tuple(color_list[i].tolist())
 
                 for point in path:
-                    cv2.circle(img_edge, (point[0], point[1]), 3, (color), -1)
+                    cv2.circle(img_edge, (point[0], point[1]), 1, (color), -1)
 
         return img_edge, strands
 
@@ -221,7 +224,9 @@ class RosApp(App):
             continue
         print("received camera_info... ")
         self.create_pcd = CreatePointCloud(self.camera_info)
-        # self.refiner = CRFSegmentationRefiner()
+        # self.refiner = CRFSegmentationRefiner(0.9, 1.0)
+        self.refiner = refine.Refiner(device='cuda:0') # device can also be 'cpu'
+
         print("start masked pcd publishing")
         while not rospy.is_shutdown():
             if self.cv_image is not None and self.cv_depth is not None:
@@ -229,9 +234,12 @@ class RosApp(App):
                 time_now = rospy.Time.now()
                 if self.output_image is not None:
                     # self.output_image = self.refiner.refine(self.cv_image, self.output_image)
+                    self.output_image = self.refiner.refine(self.cv_image, self.output_image, fast=True, L=200)
+                    self.output_image = np.where(self.output_image > 255*0.9, 255, 0).astype(np.uint8)
+
                     masked_depth = self.apply_depth_mask(self.cv_depth, self.output_image)
                     self.output_image, masked_depth = self.refine_mask_with_depth(self.output_image, masked_depth, self.distance)
-                    normal_map_vis, normal_map = compute_normal_map(masked_depth)
+                    # normal_map_vis, normal_map = compute_normal_map(masked_depth)
 
                     if self.mode == "strip":
                         strand_rgb, xyz_strips, angle_map = self.hair_angle_calculator.process_image(self.cv_image, self.output_image, masked_depth, self.camera_info)
@@ -249,12 +257,12 @@ class RosApp(App):
                         strand_rgb, xyz_strips, angle_map = self.hair_angle_calculator.process_image(self.cv_image, self.output_image, masked_depth, self.camera_info)
                     if self.mode == "nn":
                         strand_map, angle_map = img2strand(self.opt, self.cv_image, self.output_image)
-                        # strand_rgb = cv2.cvtColor(strand_map, cv2.COLOR_BGR2RGB)
-                        # strand_rgb, strands = self.create_hair_strands(self.cv_image, self.output_image, angle_map, W=1, n_strands=50, strand_length=50, distance=5)
-                        # strand_rgb = cv2.addWeighted(self.cv_image, 0.5, strand_rgb, 0.5, 2.2)
+                        strand_rgb = cv2.cvtColor(strand_map, cv2.COLOR_BGR2RGB)
+                        strand_rgb, strands = self.create_hair_strands(self.cv_image, self.output_image, angle_map, W=1, n_strands=50, strand_length=50, distance=5)
+                        strand_rgb = cv2.addWeighted(self.cv_image, 0.5, strand_rgb, 0.5, 2.2)
 
-                        orientation_map_3d = compute_3d_orientation_map(normal_map, angle_map, self.output_image)
-                        strand_rgb = visualize_orientation_map(orientation_map_3d.to("cpu").numpy())
+                        # orientation_map_3d = compute_3d_orientation_map(normal_map, angle_map, self.output_image)
+                        # strand_rgb = visualize_orientation_map(orientation_map_3d.to("cpu").numpy())
 
                     masked_depth_msg= self.make_depth_msg(masked_depth, time_now)
                     try:
@@ -278,8 +286,11 @@ class RosApp(App):
 
                         largest_cloud_msg = pc2.create_cloud(header, fields, closest_cloud)
 
+                        hair_mask_msg = self.bridge.cv2_to_imgmsg(self.output_image, "passthrough")
+                        hair_mask_msg.header =  Header(stamp=time_now)
                         if largest_cloud_msg is not None:
                             self.cloud_pub.publish(largest_cloud_msg)
+                        self.hair_mask_pub.publish(hair_mask_msg)
                         self.depth_pub.publish(masked_depth_msg)
                         self.strand_pub.publish(ros_image)
                         self.hair_pub.publish(self.apply_hair_mask(self.cv_image, self.output_image, time_now))
