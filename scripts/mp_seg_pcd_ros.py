@@ -2,7 +2,7 @@ import time
 from lib.options import BaseOptions as MyBaseOptions
 # from scripts.mycam_mask import img2masks
 from scripts.mycam_strand import *
-# from scripts.img2depth import img2depth
+from scripts.my_depth import img2depth
 
 import rospy
 from sensor_msgs.msg import Image, CameraInfo, PointCloud2, PointField
@@ -46,7 +46,9 @@ class RosApp(App):
         self.hair_pub = rospy.Publisher("segmented_hair_image"+"/"+str(self.camera_ns), Image, queue_size=1)
         self.hair_mask_pub = rospy.Publisher("segmented_hair_mask_image"+"/"+str(self.camera_ns), Image, queue_size=1)
         self.depth_pub = rospy.Publisher("masked_depth_image"+"/"+str(self.camera_ns), Image, queue_size=1)
+        self.depth_2d_pub = rospy.Publisher("2d_masked_depth_image"+"/"+str(self.camera_ns), Image, queue_size=1)
         self.cloud_pub = rospy.Publisher("segmented_cloud"+"/"+str(self.camera_ns), PointCloud2, queue_size=1)
+        
         self.plane_pub = rospy.Publisher('estimated_plane'+"/"+str(self.camera_ns), Marker, queue_size=10)
         self.sphere_pub = rospy.Publisher('estimated_sphere'+"/"+str(self.camera_ns), Marker, queue_size=10)
         self.strips_pub = rospy.Publisher('strips'+"/"+str(self.camera_ns), MarkerArray, queue_size=1)
@@ -133,7 +135,7 @@ class RosApp(App):
             return None, None
         return plane_model, inliers
 
-    def create_hair_strands(self, image, hair_mask, angle_map, W=15, n_strands=100, strand_length=20, distance=3):
+    def create_hair_strands(self, image, hair_mask, angle_map, W=15, n_strands=100, strand_length=20, distance=3, gradiation=3):
         """가상의 헤어 스트랜드를 생성합니다."""
         strands = []
         start_x = np.linspace(0, image.shape[1]-1, n_strands)
@@ -156,9 +158,11 @@ class RosApp(App):
             color_list = np.random.randint(255, size=(len(strands), 3))
             for i, path in enumerate(strands):
                 # color = (np.random.randint(0, 255),np.random.randint(0, 255),np.random.randint(0, 255))
-                color = tuple(color_list[i].tolist())
 
-                for point in path:
+                for j, point in enumerate(path):
+
+                    color = tuple((color_list[i]-j*gradiation).tolist()) # -j*n is for gradiation
+
                     cv2.circle(img_edge, (point[0], point[1]), 1, (color), -1)
 
         return img_edge, strands
@@ -257,9 +261,12 @@ class RosApp(App):
                         strand_rgb, xyz_strips, angle_map = self.hair_angle_calculator.process_image(self.cv_image, self.output_image, masked_depth, self.camera_info)
                     if self.mode == "nn":
                         strand_map, angle_map = img2strand(self.opt, self.cv_image, self.output_image)
-                        strand_rgb = cv2.cvtColor(strand_map, cv2.COLOR_BGR2RGB)
+                        # depth_2d_map = img2depth(self.opt, self.cv_image, self.output_image)
+                        # strand_rgb = cv2.cvtColor(strand_map, cv2.COLOR_BGR2RGB)
                         strand_rgb, strands = self.create_hair_strands(self.cv_image, self.output_image, angle_map, W=1, n_strands=50, strand_length=50, distance=5)
                         strand_rgb = cv2.addWeighted(self.cv_image, 0.5, strand_rgb, 0.5, 2.2)
+                        # depth_map_2d_msg= self.bridge.cv2_to_imgmsg(depth_2d_map, "bgr8")
+                        # self.depth_2d_pub.publish(depth_map_2d_msg, "passthrough")
 
                         # orientation_map_3d = compute_3d_orientation_map(normal_map, angle_map, self.output_image)
                         # strand_rgb = visualize_orientation_map(orientation_map_3d.to("cpu").numpy())
