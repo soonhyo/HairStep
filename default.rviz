@@ -82,14 +82,14 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.009999999776482582
       Style: Points
-      Topic: /segmented_cloud
+      Topic: /segmented_cloud/camera
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
     - Class: rviz/Image
       Enabled: true
-      Image Topic: /segmented_image
+      Image Topic: /segmented_image/camera
       Max Value: 1
       Median window: 5
       Min Value: 0
@@ -101,7 +101,7 @@ Visualization Manager:
       Value: true
     - Class: rviz/Image
       Enabled: true
-      Image Topic: /masked_depth_image
+      Image Topic: /masked_depth_image/camera
       Max Value: 1
       Median window: 5
       Min Value: 0
@@ -172,7 +172,7 @@ Visualization Manager:
       Marker Topic: /strips
       Name: MarkerArray
       Namespaces:
-        "": true
+        {}
       Queue Size: 100
       Value: true
   Enabled: true
@@ -203,7 +203,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 1.1463364362716675
+      Distance: 0.4920181632041931
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -219,9 +219,9 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.2097972333431244
+      Pitch: 0.49479687213897705
       Target Frame: <Fixed Frame>
-      Yaw: 1.8745094537734985
+      Yaw: 3.559512138366699
     Saved: ~
 Window Geometry:
   Displays:

@@ -236,76 +236,73 @@ class RosApp(App):
             if self.cv_image is not None and self.cv_depth is not None:
                 self.update(self.cv_image)
                 time_now = rospy.Time.now()
-                if self.output_image is not None:
-                    # self.output_image = self.refiner.refine(self.cv_image, self.output_image)
-                    self.output_image = self.refiner.refine(self.cv_image, self.output_image, fast=True, L=200)
-                    self.output_image = np.where(self.output_image > 255*0.9, 255, 0).astype(np.uint8)
+                # self.output_image = self.refiner.refine(self.cv_image, self.output_image)
+                self.output_image = self.refiner.refine(self.cv_image, self.output_image, fast=True, L=200)
+                self.output_image = np.where(self.output_image > 255*0.9, 255, 0).astype(np.uint8)
 
-                    masked_depth = self.apply_depth_mask(self.cv_depth, self.output_image)
-                    self.output_image, masked_depth = self.refine_mask_with_depth(self.output_image, masked_depth, self.distance)
-                    # normal_map_vis, normal_map = compute_normal_map(masked_depth)
+                masked_depth = self.apply_depth_mask(self.cv_depth, self.output_image)
+                self.output_image, masked_depth = self.refine_mask_with_depth(self.output_image, masked_depth, self.distance)
+                # normal_map_vis, normal_map = compute_normal_map(masked_depth)
 
-                    if self.mode == "strip":
-                        strand_rgb, xyz_strips, angle_map = self.hair_angle_calculator.process_image(self.cv_image, self.output_image, masked_depth, self.camera_info)
-                        # create_and_publish_strips_markers(self.strips_pub, self.frame_id, xyz_strips)
-                        strand_rgb, strands = self.create_hair_strands(strand_rgb, self.output_image, angle_map.to("cpu").numpy().copy(), W=self.size, n_strands=50, strand_length=50, distance=10)
-                        strand_rgb = cv2.addWeighted(self.cv_image, 0.5, strand_rgb, 0.5, 2.2)
-                    if self.mode == "gabor":
-                        strand_rgb, angle_map = self.hair_angle_calculator.process_image(self.cv_image, self.output_image, masked_depth, self.camera_info)
-                        # strands = self.create_hair_strands_gabor(angle_map)
-                        strand_rgb, strands = self.create_hair_strands(strand_rgb, self.output_image, angle_map, W=1, n_strands=50, strand_length=50, distance=5)
-                        # strand_rgb = self.visualize_hair_strands(strand_rgb, strands)
-                    if self.mode == "color":
-                        strand_rgb, xyz_strips, angle_map = self.hair_angle_calculator.process_image(self.cv_image, self.output_image, masked_depth, self.camera_info)
-                    if self.mode == "3d_color":
-                        strand_rgb, xyz_strips, angle_map = self.hair_angle_calculator.process_image(self.cv_image, self.output_image, masked_depth, self.camera_info)
-                    if self.mode == "nn":
-                        strand_map, angle_map = img2strand(self.opt, self.cv_image, self.output_image)
-                        strand_rgb = cv2.cvtColor(strand_map, cv2.COLOR_BGR2RGB)
-                        strand_rgb, strands = self.create_hair_strands(self.cv_image, self.output_image, angle_map, W=1, n_strands=50, strand_length=50, distance=5)
-                        strand_rgb = cv2.addWeighted(self.cv_image, 0.5, strand_rgb, 0.5, 2.2)
-                        # depth_2d_map = img2depth(self.opt, self.cv_image, self.output_image)
-                        # depth_map_2d_msg= self.bridge.cv2_to_imgmsg(depth_2d_map, "bgr8")
-                        # self.depth_2d_pub.publish(depth_map_2d_msg, "passthrough")
+                if self.mode == "strip":
+                    strand_rgb, xyz_strips, angle_map = self.hair_angle_calculator.process_image(self.cv_image, self.output_image, masked_depth, self.camera_info)
+                    # create_and_publish_strips_markers(self.strips_pub, self.frame_id, xyz_strips)
+                    strand_rgb, strands = self.create_hair_strands(strand_rgb, self.output_image, angle_map.to("cpu").numpy().copy(), W=self.size, n_strands=50, strand_length=50, distance=10)
+                    strand_rgb = cv2.addWeighted(self.cv_image, 0.5, strand_rgb, 0.5, 2.2)
+                if self.mode == "gabor":
+                    strand_rgb, angle_map = self.hair_angle_calculator.process_image(self.cv_image, self.output_image, masked_depth, self.camera_info)
+                    # strands = self.create_hair_strands_gabor(angle_map)
+                    strand_rgb, strands = self.create_hair_strands(strand_rgb, self.output_image, angle_map, W=1, n_strands=50, strand_length=50, distance=5)
+                    # strand_rgb = self.visualize_hair_strands(strand_rgb, strands)
+                if self.mode == "color":
+                    strand_rgb, xyz_strips, angle_map = self.hair_angle_calculator.process_image(self.cv_image, self.output_image, masked_depth, self.camera_info)
+                if self.mode == "3d_color":
+                    strand_rgb, xyz_strips, angle_map = self.hair_angle_calculator.process_image(self.cv_image, self.output_image, masked_depth, self.camera_info)
+                if self.mode == "nn":
+                    strand_map, angle_map = img2strand(self.opt, self.cv_image, self.output_image)
+                    strand_rgb = cv2.cvtColor(strand_map, cv2.COLOR_BGR2RGB)
+                    strand_rgb, strands = self.create_hair_strands(np.zeros_like(self.cv_image), self.output_image, angle_map, W=1, n_strands=50, strand_length=50, distance=5)
+                    strand_rgb = cv2.addWeighted(self.cv_image, 0.5, strand_rgb, 0.5, 2.2)
+                    # depth_2d_map = img2depth(self.opt, self.cv_image, self.output_image)
+                    # depth_map_2d_msg= self.bridge.cv2_to_imgmsg(depth_2d_map, "bgr8")
+                    # self.depth_2d_pub.publish(depth_map_2d_msg, "passthrough")
 
-                        # orientation_map_3d = compute_3d_orientation_map(normal_map, angle_map, self.output_image)
-                        # strand_rgb = visualize_orientation_map(orientation_map_3d.to("cpu").numpy())
+                    # orientation_map_3d = compute_3d_orientation_map(normal_map, angle_map, self.output_image)
+                    # strand_rgb = visualize_orientation_map(orientation_map_3d.to("cpu").numpy())
 
-                    masked_depth_msg= self.make_depth_msg(masked_depth, time_now)
-                    try:
-                        ros_image = self.bridge.cv2_to_imgmsg(strand_rgb, "bgr8")
-                        ros_image.header = Header(stamp=time_now)
-                        points, header, fields= self.create_pcd.create_point_cloud(strand_rgb, self.cv_depth, self.output_image, time_now)
-                        if len(points) == 0:
-                            continue
+                masked_depth_msg= self.make_depth_msg(masked_depth, time_now)
+                try:
+                    ros_image = self.bridge.cv2_to_imgmsg(strand_rgb, "bgr8")
+                    ros_image.header = Header(stamp=time_now)
+                    points, header, fields= self.create_pcd.create_point_cloud(strand_rgb, self.cv_depth, self.output_image, time_now)
+                    if len(points) != 0:
                         indices= self.create_pcd.filter_points_in_distance_range(points[:,:3], 0.01, self.distance)
                         closest_cloud = points[indices]
-
                         largest_cloud_msg = pc2.create_cloud(header, fields, closest_cloud)
                         if largest_cloud_msg is not None:
                             self.cloud_pub.publish(largest_cloud_msg)
 
-                        # ransac
-                        # if len(closest_cloud[:,:3]) > 4:
-                        #     center, radius, sph_inliers = self.sph.fit(closest_cloud[:,:3].astype(np.float32),thresh=0.05, maxIteration=100)
-                        # if (center is not None) and (radius is not None):
-                        #     sph_msg = create_sphere_marker(center, radius, self.frame_id)
-                        #     self.sphere_pub.publish(sph_msg)
-                        # estimated_plane, plane_inliers = self.ransac(closest_cloud[:,:3][::4], 0.3, 3, 50)
+                    # ransac
+                    # if len(closest_cloud[:,:3]) > 4:
+                    #     center, radius, sph_inliers = self.sph.fit(closest_cloud[:,:3].astype(np.float32),thresh=0.05, maxIteration=100)
+                    # if (center is not None) and (radius is not None):
+                    #     sph_msg = create_sphere_marker(center, radius, self.frame_id)
+                    #     self.sphere_pub.publish(sph_msg)
+                    # estimated_plane, plane_inliers = self.ransac(closest_cloud[:,:3][::4], 0.3, 3, 50)
 
-                        # if (estimated_plane is not None) and (plane_inliers is not None):
-                        #     plane_msg, plane_inliers_msg = create_plane_and_inliers_markers(estimated_plane, plane_inliers, closest_cloud[:,:3], (0.5, 0.5, 0.001), frame_id=self.frame_id)
-                        #     self.plane_pub.publish(plane_msg)
+                    # if (estimated_plane is not None) and (plane_inliers is not None):
+                    #     plane_msg, plane_inliers_msg = create_plane_and_inliers_markers(estimated_plane, plane_inliers, closest_cloud[:,:3], (0.5, 0.5, 0.001), frame_id=self.frame_id)
+                    #     self.plane_pub.publish(plane_msg)
 
 
-                        hair_mask_msg = self.bridge.cv2_to_imgmsg(self.output_image, "passthrough")
-                        hair_mask_msg.header =  Header(stamp=time_now)
-                        self.hair_mask_pub.publish(hair_mask_msg)
-                        self.depth_pub.publish(masked_depth_msg)
-                        self.strand_pub.publish(ros_image)
-                        self.hair_pub.publish(self.apply_hair_mask(self.cv_image, self.output_image, time_now))
-                    except CvBridgeError as e:
-                        rospy.logerr(e)
+                    hair_mask_msg = self.bridge.cv2_to_imgmsg(self.output_image, "passthrough")
+                    hair_mask_msg.header =  Header(stamp=time_now)
+                    self.hair_mask_pub.publish(hair_mask_msg)
+                    self.depth_pub.publish(masked_depth_msg)
+                    self.strand_pub.publish(ros_image)
+                    self.hair_pub.publish(self.apply_hair_mask(self.cv_image, self.output_image, time_now))
+                except CvBridgeError as e:
+                    rospy.logerr(e)
             self.rate.sleep()
         print("shutdown the program")
 if __name__ == "__main__":

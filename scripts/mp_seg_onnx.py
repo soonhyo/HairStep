@@ -68,8 +68,13 @@ class App:
 
         condition1 = mask == 1 # hair
         condition2 = mask == 3
-        self.output_image = np.where(condition1, fg_image, bg_image)
-        self.output_image_face = np.where(condition2, fg_image, bg_image)
+
+        if np.sum(condition1) == 0:
+            self.output_image = bg_image
+            self.output_image_face = bg_image
+        else:
+            self.output_image = np.where(condition1, fg_image, bg_image)
+            self.output_image_face = np.where(condition2, fg_image, bg_image)
 
     def update(self, image):
         # 이미지 전처리
