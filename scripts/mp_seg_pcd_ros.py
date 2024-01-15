@@ -45,7 +45,10 @@ class RosApp(App):
         self.strand_pub = rospy.Publisher("segmented_image"+"/"+str(self.camera_ns), Image, queue_size=1)
         self.hair_pub = rospy.Publisher("segmented_hair_image"+"/"+str(self.camera_ns), Image, queue_size=1)
         self.hair_mask_pub = rospy.Publisher("segmented_hair_mask_image"+"/"+str(self.camera_ns), Image, queue_size=1)
+        self.human_pub = rospy.Publisher("segmented_human_image"+"/"+str(self.camera_ns), Image, queue_size=1)
+
         self.depth_pub = rospy.Publisher("masked_depth_image"+"/"+str(self.camera_ns), Image, queue_size=1)
+        self.depth_human_pub = rospy.Publisher("masked_human_depth_image"+"/"+str(self.camera_ns), Image, queue_size=1)
         self.depth_2d_pub = rospy.Publisher("2d_masked_depth_image"+"/"+str(self.camera_ns), Image, queue_size=1)
         self.cloud_pub = rospy.Publisher("segmented_cloud"+"/"+str(self.camera_ns), PointCloud2, queue_size=1)
         
@@ -239,9 +242,25 @@ class RosApp(App):
                 # self.output_image = self.refiner.refine(self.cv_image, self.output_image)
                 self.output_image = self.refiner.refine(self.cv_image, self.output_image, fast=True, L=200)
                 self.output_image = np.where(self.output_image > 255*0.9, 255, 0).astype(np.uint8)
+                self.output_image_face = self.refiner.refine(self.cv_image, self.output_image_face, fast=True, L=200)
+                self.output_image_face = np.where(self.output_image_face > 255*0.9, 255, 0).astype(np.uint8)
 
+                # self.output_image_human = self.refiner.refine(self.cv_image, self.output_image_human, fast=True, L=100)
+                # self.output_image_human = np.where(self.output_image_human > 255*0.9, 255, 0).astype(np.uint8)
+                self.output_image_human = self.output_image | self.output_image_face
+
+                self.output_image_human_color = self.output_image_human[:,:,np.newaxis] /255
+                self.output_image_human_color = self.output_image_human_color.astype(np.uint8) *  self.cv_image[:,:,::-1]
+
+                # hair masekd depth image
                 masked_depth = self.apply_depth_mask(self.cv_depth, self.output_image)
                 self.output_image, masked_depth = self.refine_mask_with_depth(self.output_image, masked_depth, self.distance)
+
+                # for human tracking
+                masked_human_depth = self.apply_depth_mask(self.cv_depth, self.output_image_human)
+                self.output_image_human, masked_human_depth = self.refine_mask_with_depth(self.output_image_human, masked_human_depth, self.distance)
+                masked_human_depth_msg= self.make_depth_msg(masked_human_depth, time_now)
+
                 # normal_map_vis, normal_map = compute_normal_map(masked_depth)
 
                 if self.mode == "strip":
@@ -294,10 +313,15 @@ class RosApp(App):
                     #     plane_msg, plane_inliers_msg = create_plane_and_inliers_markers(estimated_plane, plane_inliers, closest_cloud[:,:3], (0.5, 0.5, 0.001), frame_id=self.frame_id)
                     #     self.plane_pub.publish(plane_msg)
 
-
                     hair_mask_msg = self.bridge.cv2_to_imgmsg(self.output_image, "passthrough")
-                    hair_mask_msg.header =  Header(stamp=time_now)
+                    hair_mask_msg.header = Header(stamp=time_now)
+
+                    human_msg = self.bridge.cv2_to_imgmsg(self.output_image_human_color, "rgb8")
+                    human_msg.header = Header(stamp=time_now)
+
+                    self.human_pub.publish(human_msg)
                     self.hair_mask_pub.publish(hair_mask_msg)
+                    self.depth_human_pub.publish(masked_human_depth_msg)
                     self.depth_pub.publish(masked_depth_msg)
                     self.strand_pub.publish(ros_image)
                     self.hair_pub.publish(self.apply_hair_mask(self.cv_image, self.output_image, time_now))

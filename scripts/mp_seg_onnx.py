@@ -29,6 +29,8 @@ class App:
     def __init__(self):
         self.output_image = None
         self.output_image_face = None
+        self.output_image_human = None
+        self.output_image_human_color = None
 
         # 카테고리별 색상 정의 (0부터 5까지의 카테고리)
         self.colors = [
@@ -68,13 +70,19 @@ class App:
 
         condition1 = mask == 1 # hair
         condition2 = mask == 3
+        condition3 = (mask == 1) | (mask == 2) | (mask == 3)
+        # condition3 = mask != 0
 
         if np.sum(condition1) == 0:
             self.output_image = bg_image
             self.output_image_face = bg_image
+            self.output_image_human = bg_image
+            self.output_image_human_color = image[:,:,::-1]
+
         else:
             self.output_image = np.where(condition1, fg_image, bg_image)
             self.output_image_face = np.where(condition2, fg_image, bg_image)
+            self.output_image_human =  np.where(condition3, np.ones(mask.shape[:2], dtype=np.uint8), bg_image)
 
     def update(self, image):
         # 이미지 전처리
