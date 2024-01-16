@@ -19,6 +19,8 @@ import pyransac3d as pyrsc
 
 # from scripts.mp_segmenter import App
 from scripts.mp_seg_onnx import App
+# from scripts.mp_seg_ros import App
+
 from scripts.create_pcd import CreatePointCloud
 from scripts.crf import CRFSegmentationRefiner
 from scripts.utils import HairAngleCalculator
@@ -239,18 +241,20 @@ class RosApp(App):
             if self.cv_image is not None and self.cv_depth is not None:
                 self.update(self.cv_image)
                 time_now = rospy.Time.now()
-                # self.output_image = self.refiner.refine(self.cv_image, self.output_image)
+                if self.output_image_human is None:
+                    continue
+                self.output_image = self.refiner.refine(self.cv_image, self.output_image)
                 self.output_image = self.refiner.refine(self.cv_image, self.output_image, fast=True, L=200)
                 self.output_image = np.where(self.output_image > 255*0.9, 255, 0).astype(np.uint8)
-                self.output_image_face = self.refiner.refine(self.cv_image, self.output_image_face, fast=True, L=200)
-                self.output_image_face = np.where(self.output_image_face > 255*0.9, 255, 0).astype(np.uint8)
+                # self.output_image_face = self.refiner.refine(self.cv_image, self.output_image_face, fast=True, L=200)
+                # self.output_image_face = np.where(self.output_image_face > 255*0.9, 255, 0).astype(np.uint8)
 
                 # self.output_image_human = self.refiner.refine(self.cv_image, self.output_image_human, fast=True, L=100)
                 # self.output_image_human = np.where(self.output_image_human > 255*0.9, 255, 0).astype(np.uint8)
-                self.output_image_human = self.output_image | self.output_image_face
+                # self.output_image_human = self.output_image | self.output_image_face
 
-                self.output_image_human_color = self.output_image_human[:,:,np.newaxis] /255
-                self.output_image_human_color = self.output_image_human_color.astype(np.uint8) *  self.cv_image[:,:,::-1]
+                # self.output_image_human_color = self.output_image_human[:,:,np.newaxis] # /255
+                # self.output_image_human_color = self.output_image_human_color.astype(np.uint8) *  self.cv_image[:,:,::-1]
 
                 # hair masekd depth image
                 masked_depth = self.apply_depth_mask(self.cv_depth, self.output_image)

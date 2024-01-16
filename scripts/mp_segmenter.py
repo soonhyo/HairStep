@@ -42,11 +42,15 @@ CLOTHES_COLOR = (255, 0, 255) # purple
 class App:
     def __init__(self):
         self.output_image = None
-        self.base_options = python.BaseOptions(model_asset_path='hair_segmenter.tflite',
-                                               delegate=python.BaseOptions.Delegate.GPU)
+        self.output_image_face = None
+        self.output_image_human = None
+        self.output_image_human_color = None
 
-        # self.base_options = python.BaseOptions(model_asset_path='selfie_multiclass_256x256.tflite',
-        #                                        delegate=python.BaseOptions.Delegate.CPU)
+        # self.base_options = python.BaseOptions(model_asset_path='hair_segmenter.tflite',
+        #                                        delegate=python.BaseOptions.Delegate.GPU)
+
+        self.base_options = python.BaseOptions(model_asset_path='selfie_multiclass_256x256.tflite',
+                                               delegate=python.BaseOptions.Delegate.CPU)
 
         self.options = ImageSegmenterOptions(base_options=self.base_options,
                                              running_mode=VisionRunningMode.LIVE_STREAM,
@@ -78,5 +82,21 @@ class App:
         bg_image[:] = BLACK_COLOR[0]
 
         condition1 = category_mask.numpy_view() == 1 # hair
-        self.output_image = np.where(condition1, fg_image, bg_image)
-        # self.output_image = cv2.cvtColor(self.output_image, cv2.COLOR_GRAY2RGB)
+        condition2 = category_mask.numpy_view() == 3
+        #condition3 = (mask == 1) | (mask == 2) | (mask == 3)
+        condition3 = category_mask.numpy_view() != 0
+
+        if np.sum(condition1) == 0:
+            self.output_image = bg_image
+        else:
+            self.output_image = np.where(condition1, fg_image, bg_image)
+        if np.sum(condition2) == 0:
+            self.output_image_face = bg_image
+        else:
+            self.output_image_face = np.where(condition2, fg_image, bg_image)
+        if np.sum(condition3) == 0:
+            self.output_image_human = bg_image
+            self.output_image_human_color = image_data[:,:,::-1]
+        else:
+            self.output_image_human = np.where(condition3, np.ones(image_data.shape[:2], dtype=np.uint8), bg_image)
+            self.output_image_human_color = self.output_image_human * image_data[:,:,::-1]

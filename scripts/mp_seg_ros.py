@@ -42,12 +42,16 @@ CLOTHES_COLOR = (255, 0, 255) # purple
 class App:
     def __init__(self):
         self.output_image = None
-        # Create an FaceLandmarker object.
-        self.base_options = python.BaseOptions(model_asset_path='hair_segmenter.tflite',
-                                               delegate=python.BaseOptions.Delegate.GPU)
+        self.output_image_face = None
+        self.output_image_human = None
+        self.output_image_human_color = None
 
-        # self.base_options = python.BaseOptions(model_asset_path='selfie_multiclass_256x256.tflite',
-        #                                        delegate=python.BaseOptions.Delegate.CPU)
+        # Create an FaceLandmarker object.
+        # self.base_options = python.BaseOptions(model_asset_path='hair_segmenter.tflite',
+        #                                        delegate=python.BaseOptions.Delegate.GPU)
+
+        self.base_options = python.BaseOptions(model_asset_path='selfie_multiclass_256x256.tflite',
+                                               delegate=python.BaseOptions.Delegate.CPU)
 
         self.options = ImageSegmenterOptions(base_options=self.base_options,
                                              running_mode=VisionRunningMode.LIVE_STREAM,
@@ -80,18 +84,29 @@ class App:
         bg_image[:] = BLACK_COLOR[0]
 
         condition1 = category_mask.numpy_view() == 1 # hair
-        # print(np.unique(category_mask.numpy_view()))
-        # confidence = confidence_mask.numpy_view()
-        # print(confidence)
-        self.output_image = np.where(condition1, fg_image, bg_image)
+        condition2 = category_mask.numpy_view() == 3
+        #condition3 = (mask == 1) | (mask == 2) | (mask == 3)
+        condition3 = category_mask.numpy_view() != 0
 
-        # self.output_image = cv2.cvtColor(self.output_image, cv2.COLOR_GRAY2RGB)
+        if np.sum(condition1) == 0:
+            self.output_image = bg_image
+        else:
+            self.output_image = np.where(condition1, fg_image, bg_image)
+        if np.sum(condition2) == 0:
+            self.output_image_face = bg_image
+        else:
+            self.output_image_face = np.where(condition2, fg_image, bg_image)
+        if np.sum(condition3) == 0:
+            self.output_image_human = bg_image
+            self.output_image_human_color = image_data[:,:,::-1]
+        else:
+            self.output_image_human = np.where(condition3, np.ones(image_data.shape[:2], dtype=np.uint8), bg_image)
 
     def main(self):
         cap = cv2.VideoCapture(0)
         opt = MyBaseOptions().parse()
 
-        rate = 5
+        rate = 30
 
         while True:
             ret, frame = cap.read()
@@ -132,7 +147,7 @@ class RosApp(App):
         self.bridge = CvBridge()
         self.image_pub = rospy.Publisher("segmented_image", Image, queue_size=1)
         self.opt = MyBaseOptions().parse()
-        self.rate = rospy.Rate(5)
+        self.rate = rospy.Rate(60)
         self.cv_image = None
         rospy.Subscriber("/camera/color/image_rect_color", Image, self.image_callback)
 
@@ -153,7 +168,7 @@ class RosApp(App):
 
             if self.output_image is not None:
                 try:
-                    strand_map = img2strand(self.opt, self.cv_image, self.output_image)
+                    strand_map, angle_map = img2strand(self.opt, self.cv_image, self.output_image)
                     strand_rgb = cv2.cvtColor(strand_map, cv2.COLOR_BGR2RGB)
 
                     ros_image = self.bridge.cv2_to_imgmsg(strand_rgb, "bgr8")
