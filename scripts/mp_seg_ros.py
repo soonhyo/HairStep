@@ -85,8 +85,8 @@ class App:
 
         condition1 = category_mask.numpy_view() == 1 # hair
         condition2 = category_mask.numpy_view() == 3
-        #condition3 = (mask == 1) | (mask == 2) | (mask == 3)
-        condition3 = category_mask.numpy_view() != 0
+        condition3 = (category_mask.numpy_view() == 1) | (category_mask.numpy_view() == 2) | (category_mask.numpy_view() == 3)
+        # condition3 = category_mask.numpy_view() != 0
 
         if np.sum(condition1) == 0:
             self.output_image = bg_image
@@ -101,12 +101,13 @@ class App:
             self.output_image_human_color = image_data[:,:,::-1]
         else:
             self.output_image_human = np.where(condition3, np.ones(image_data.shape[:2], dtype=np.uint8), bg_image)
+            self.output_image_human_color = self.output_image_human[:,:,np.newaxis] * image_data[:,:,::-1]
 
     def main(self):
         cap = cv2.VideoCapture(0)
         opt = MyBaseOptions().parse()
 
-        rate = 30
+        rate = 5
 
         while True:
             ret, frame = cap.read()
@@ -147,7 +148,7 @@ class RosApp(App):
         self.bridge = CvBridge()
         self.image_pub = rospy.Publisher("segmented_image", Image, queue_size=1)
         self.opt = MyBaseOptions().parse()
-        self.rate = rospy.Rate(60)
+        self.rate = rospy.Rate(5)
         self.cv_image = None
         rospy.Subscriber("/camera/color/image_rect_color", Image, self.image_callback)
 
@@ -168,10 +169,10 @@ class RosApp(App):
 
             if self.output_image is not None:
                 try:
-                    strand_map, angle_map = img2strand(self.opt, self.cv_image, self.output_image)
-                    strand_rgb = cv2.cvtColor(strand_map, cv2.COLOR_BGR2RGB)
+                    # strand_map, angle_map = img2strand(self.opt, self.cv_image, self.output_image)
+                    # strand_rgb = cv2.cvtColor(strand_map, cv2.COLOR_BGR2RGB) #
 
-                    ros_image = self.bridge.cv2_to_imgmsg(strand_rgb, "bgr8")
+                    ros_image = self.bridge.cv2_to_imgmsg(self.output_image_human_color, "bgr8")
                     ros_image.header = Header(stamp=rospy.Time.now())
                     self.image_pub.publish(ros_image)
                 except CvBridgeError as e:

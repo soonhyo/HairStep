@@ -87,7 +87,7 @@ class App:
         condition3 = category_mask.numpy_view() != 0
 
         if np.sum(condition1) == 0:
-            self.output_image = bg_image
+            self.output_image = bg_imag
         else:
             self.output_image = np.where(condition1, fg_image, bg_image)
         if np.sum(condition2) == 0:

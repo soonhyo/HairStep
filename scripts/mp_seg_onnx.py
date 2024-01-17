@@ -43,8 +43,8 @@ class App:
         ]
 
         # ONNX 모델 로드
-        #self.session = ort.InferenceSession('model.onnx', providers=['CPUExecutionProvider'])
-        self.session = ort.InferenceSession('model.onnx', providers=['CUDAExecutionProvider'])
+        self.session = ort.InferenceSession('model.onnx', providers=['CPUExecutionProvider'])
+        # self.session = ort.InferenceSession('model.onnx', providers=['CUDAExecutionProvider'])
 
     def preprocess(self, frame):
         frame = cv2.resize(frame, (256,256))
@@ -70,8 +70,8 @@ class App:
 
         condition1 = mask == 1 # hair
         condition2 = mask == 3
-        #condition3 = (mask == 1) | (mask == 2) | (mask == 3)
-        condition3 = mask != 0
+        condition3 = (mask == 1) | (mask == 2) | (mask == 3)
+        # condition3 = mask != 0
 
         if np.sum(condition1) == 0:
             self.output_image = bg_image
