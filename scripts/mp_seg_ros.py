@@ -12,6 +12,9 @@ from lib.options import BaseOptions as MyBaseOptions
 # from scripts.mycam_mask import img2masks
 from scripts.mycam_strand import img2strand
 # from scripts.img2depth import img2depth
+from scripts.utils import HairAngleCalculator
+
+from scipy.special import comb
 
 import rospy
 from sensor_msgs.msg import Image
@@ -144,19 +147,87 @@ class App:
 class RosApp(App):
     def __init__(self):
         super(RosApp, self).__init__()
+        
         rospy.init_node('mediapipe_ros_node', anonymous=True)
         self.bridge = CvBridge()
         self.image_pub = rospy.Publisher("segmented_image", Image, queue_size=1)
         self.opt = MyBaseOptions().parse()
-        self.rate = rospy.Rate(5)
+        self.rate = rospy.Rate(30)
         self.cv_image = None
-        rospy.Subscriber("/camera/color/image_rect_color", Image, self.image_callback)
+        self.mode = "nn"
+        self.size = 15
+
+        self.hair_angle_calculator = HairAngleCalculator(size=self.size, mode=self.mode)
+
+        # rospy.Subscriber("/camera/color/image_rect_color", Image, self.image_callback)
+        rospy.Subscriber("/usb_cam/image_raw", Image, self.image_callback)
 
     def image_callback(self, data):
         try:
-            self.cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
+            self.cv_image = self.bridge.imgmsg_to_cv2(data, "rgb8")
         except CvBridgeError as e:
             rospy.logerr(e)
+
+    def bezier_curve(self, points, n_points=10):
+        """
+        베지어 곡선을 생성하는 함수.
+        :param points: np.array 형태의 제어점들.
+        :param n_points: 생성할 곡선의 점 개수.
+        :return: 베지어 곡선을 이루는 점들의 배열.
+        """
+        n = len(points) - 1
+        t = np.linspace(0, 1, n_points)
+        curve = np.zeros((n_points, points.shape[1]))
+        for i in range(n + 1):
+            binom = comb(n, i) * (t ** i) * ((1 - t) ** (n - i))
+            curve += np.outer(binom, points[i])  # 변경된 부분
+        return curve.astype(np.int16)
+
+    def approximate_bezier(self, strands, n_points=10):
+        """
+        스트랜드를 베지어 곡선으로 근사화하는 함수.
+        :param strands: np.array 형태의 점들을 포함하는 스트랜드.
+        :param n_points: 생성할 곡선의 점 개수.
+        :return: 근사화된 베지어 곡선.
+        """
+        bezier_strands = []
+        for strand in strands:
+            bezier_strands.append(self.bezier_curve(strand, n_points))
+        return np.asarray(bezier_strands)
+
+
+    def create_hair_strands(self, image, hair_mask, angle_map, W=15, n_strands=100, strand_length=20, distance=3, gradiation=3):
+        """가상의 헤어 스트랜드를 생성합니다."""
+        strands = []
+        start_x = np.linspace(0, image.shape[1]-1, n_strands)
+        start_y = np.linspace(0, image.shape[0]-1, n_strands)
+
+        for x in start_x:
+            for y in start_y:
+                if hair_mask[int(y), int(x)] > 0:
+                    _path = self.hair_angle_calculator.cal_flow_path([int(y), int(x)], hair_mask, image, distance, W, strand_length, angle_map)
+                    if len(_path) > 0:
+                        strands.append(np.asarray(_path))
+
+        # strands = np.asarray(strands)
+        # strands = strands.astype(np.int16)
+        img_edge = image.astype(np.uint8) * hair_mask[:,:,np.newaxis] * 255
+
+        if len(strands) > 0:
+            strands = self.approximate_bezier(strands, strand_length)
+            np.random.seed(42)
+            color_list = np.random.randint(255, size=(len(strands), 3))
+            for i, path in enumerate(strands):
+                # color = (np.random.randint(0, 255),np.random.randint(0, 255),np.random.randint(0, 255))
+
+                for j, point in enumerate(path):
+
+                    color = tuple((color_list[i]-j*gradiation).tolist()) # -j*n is for gradiation
+
+                    cv2.circle(img_edge, (point[0], point[1]), 1, (color), -1)
+
+        return img_edge, strands
+
 
     def main(self):
         while not rospy.is_shutdown():
@@ -169,10 +240,12 @@ class RosApp(App):
 
             if self.output_image is not None:
                 try:
-                    # strand_map, angle_map = img2strand(self.opt, self.cv_image, self.output_image)
+                    strand_map, angle_map = img2strand(self.opt, self.cv_image, self.output_image)
                     # strand_rgb = cv2.cvtColor(strand_map, cv2.COLOR_BGR2RGB) #
+                    strand_rgb, strands = self.create_hair_strands(np.zeros_like(self.cv_image), self.output_image, angle_map, W=1, n_strands=50, strand_length=50, distance=5)
+                    strand_rgb = cv2.addWeighted(self.cv_image, 0.5, strand_rgb, 0.5, 2.2)
 
-                    ros_image = self.bridge.cv2_to_imgmsg(self.output_image_human_color, "bgr8")
+                    ros_image = self.bridge.cv2_to_imgmsg(strand_rgb, "rgb8")
                     ros_image.header = Header(stamp=rospy.Time.now())
                     self.image_pub.publish(ros_image)
                 except CvBridgeError as e:

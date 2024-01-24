@@ -290,7 +290,7 @@ class RosApp():
                     strand_map, angle_map = img2strand(self.opt, self.cv_image, self.output_image)
                     strand_rgb = cv2.cvtColor(strand_map, cv2.COLOR_BGR2RGB)
                     strand_rgb, strands = self.create_hair_strands(np.zeros_like(self.cv_image), self.output_image, angle_map, W=1, n_strands=50, strand_length=50, distance=5)
-                    strand_rgb = cv2.addWeighted(self.cv_image, 0.5, strand_rgb, 0.5, 2.2)
+                    # strand_rgb = cv2.addWeighted(self.cv_image, 0.5, strand_rgb, 0.5, 2.2)
                     # depth_2d_map = img2depth(self.opt, self.cv_image, self.output_image)
                     # depth_map_2d_msg= self.bridge.cv2_to_imgmsg(depth_2d_map, "bgr8")
                     # self.depth_2d_pub.publish(depth_map_2d_msg, "passthrough")

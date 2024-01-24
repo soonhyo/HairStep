@@ -241,9 +241,9 @@ class RosApp(App):
             if self.cv_image is not None and self.cv_depth is not None:
                 self.update(self.cv_image)
                 time_now = rospy.Time.now()
-                if self.output_image_human is None:
-                    continue
-                self.output_image = self.refiner.refine(self.cv_image, self.output_image)
+                # if self.output_image_human is None:
+                #     continue
+                # self.output_image = self.refiner.refine(self.cv_image, self.output_image)
                 self.output_image = self.refiner.refine(self.cv_image, self.output_image, fast=True, L=200)
                 self.output_image = np.where(self.output_image > 255*0.9, 255, 0).astype(np.uint8)
                 # self.output_image_face = self.refiner.refine(self.cv_image, self.output_image_face, fast=True, L=200)
@@ -261,9 +261,9 @@ class RosApp(App):
                 self.output_image, masked_depth = self.refine_mask_with_depth(self.output_image, masked_depth, self.distance)
 
                 # for human tracking
-                masked_human_depth = self.apply_depth_mask(self.cv_depth, self.output_image_human)
-                self.output_image_human, masked_human_depth = self.refine_mask_with_depth(self.output_image_human, masked_human_depth, self.distance)
-                masked_human_depth_msg= self.make_depth_msg(masked_human_depth, time_now)
+                # masked_human_depth = self.apply_depth_mask(self.cv_depth, self.output_image_human)
+                # self.output_image_human, masked_human_depth = self.refine_mask_with_depth(self.output_image_human, masked_human_depth, self.distance)
+                # masked_human_depth_msg= self.make_depth_msg(masked_human_depth, time_now)
 
                 # normal_map_vis, normal_map = compute_normal_map(masked_depth)
 
@@ -320,12 +320,12 @@ class RosApp(App):
                     hair_mask_msg = self.bridge.cv2_to_imgmsg(self.output_image, "passthrough")
                     hair_mask_msg.header = Header(stamp=time_now)
 
-                    human_msg = self.bridge.cv2_to_imgmsg(self.output_image_human_color, "rgb8")
-                    human_msg.header = Header(stamp=time_now)
+                    # human_msg = self.bridge.cv2_to_imgmsg(self.output_image_human_color, "rgb8")
+                    # human_msg.header = Header(stamp=time_now)
 
-                    self.human_pub.publish(human_msg)
+                    # self.human_pub.publish(human_msg)
                     self.hair_mask_pub.publish(hair_mask_msg)
-                    self.depth_human_pub.publish(masked_human_depth_msg)
+                    # self.depth_human_pub.publish(masked_human_depth_msg)
                     self.depth_pub.publish(masked_depth_msg)
                     self.strand_pub.publish(ros_image)
                     self.hair_pub.publish(self.apply_hair_mask(self.cv_image, self.output_image, time_now))

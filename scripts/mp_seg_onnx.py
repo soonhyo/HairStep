@@ -77,16 +77,16 @@ class App:
             self.output_image = bg_image
         else:
             self.output_image = np.where(condition1, fg_image, bg_image)
-        if np.sum(condition2) == 0:
-            self.output_image_face = bg_image
-        else:
-            self.output_image_face = np.where(condition2, fg_image, bg_image)
-        if np.sum(condition3) == 0:
-            self.output_image_human = bg_image
-            self.output_image_human_color = image[:,:,::-1]
-        else:
-            self.output_image_human = np.where(condition3, np.ones(image.shape[:2], dtype=np.uint8), bg_image)
-            self.output_image_human_color = self.output_image_human[:,:,np.newaxis] * image[:,:,::-1]
+        # if np.sum(condition2) == 0:
+        #     self.output_image_face = bg_image
+        # else:
+        #     self.output_image_face = np.where(condition2, fg_image, bg_image)
+        # if np.sum(condition3) == 0:
+        #     self.output_image_human = bg_image
+        #     self.output_image_human_color = image[:,:,::-1]
+        # else:
+        #     self.output_image_human = np.where(condition3, np.ones(image.shape[:2], dtype=np.uint8), bg_image)
+        #     self.output_image_human_color = self.output_image_human[:,:,np.newaxis] * image[:,:,::-1]
 
     def update(self, image):
         # 이미지 전처리
