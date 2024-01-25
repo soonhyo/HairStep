@@ -1,19 +1,19 @@
+segmentation-refinement
+pyransac3d
+git+https://github.com/lucasb-eyer/pydensecrf.git
 
 imageio
 matplotlib
 scikit-image==0.17.2
-opencv-python==4.5.5.62
-
-git+https://github.com/facebookresearch/segment-anything.git
 
 imageio-ffmpeg
-pandas==1.1.5
+pandas
 argparse
 cython
 scipy
-onnxruntime==1.10.0
+onnxruntime
 gradio==2.9.4
 
-open3d==0.13.0
+open3d
 trimesh==3.9.36
 # rtree==1.0.0
