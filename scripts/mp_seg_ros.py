@@ -56,11 +56,13 @@ class App:
         self.base_options = python.BaseOptions(model_asset_path='selfie_multiclass_256x256.tflite',
                                                delegate=python.BaseOptions.Delegate.CPU)
 
+        # self.options = ImageSegmenterOptions(base_options=self.base_options,
+        #                                      running_mode=VisionRunningMode.LIVE_STREAM,
+        #                                      output_category_mask=True,
+        #                                      output_confidence_masks=False,
+        #                                      result_callback=self.mp_callback)
         self.options = ImageSegmenterOptions(base_options=self.base_options,
-                                             running_mode=VisionRunningMode.LIVE_STREAM,
-                                             output_category_mask=True,
-                                             output_confidence_masks=False,
-                                             result_callback=self.mp_callback)
+                                             output_category_mask=True)
 
         self.segmenter = ImageSegmenter.create_from_options(self.options)
 
@@ -73,14 +75,19 @@ class App:
             return
 
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame)
-        self.segmenter.segment_async(mp_image, t_ms)
-        self.latest_time_ms = t_ms
+        segmentation_result = self.segmenter.segment(mp_image)
+        self.mp_callback(segmentation_result, mp_image)
+        # self.segmenter.segment_async(mp_image, t_ms)
+        # self.latest_time_ms = t_ms
 
-    def mp_callback(self, segmentation_result: List[mp.Image], rgb_image: mp.Image, timestamp_ms: int):
+    # def mp_callback(self, segmentation_result: List[mp.Image], rgb_image: mp.Image, timestamp_ms: int):
+    def mp_callback(self, segmentation_result, rgb_image):
+
         category_mask = segmentation_result.category_mask
         # confidence_mask = segmentation_result.confidence_mask
 
         image_data = rgb_image.numpy_view()
+
         fg_image = np.zeros(image_data.shape[:2], dtype=np.uint8)
         fg_image[:] = MASK_COLOR[0]
         bg_image = np.zeros(image_data.shape[:2], dtype=np.uint8)
@@ -159,8 +166,8 @@ class RosApp(App):
 
         self.hair_angle_calculator = HairAngleCalculator(size=self.size, mode=self.mode)
 
-        # rospy.Subscriber("/camera/color/image_rect_color", Image, self.image_callback)
-        rospy.Subscriber("/usb_cam/image_raw", Image, self.image_callback)
+        rospy.Subscriber("/camera/color/image_rect_color/rotated_image", Image, self.image_callback)
+        # rospy.Subscriber("/usb_cam/image_raw/rotated_image", Image, self.image_callback)
 
     def image_callback(self, data):
         try:
@@ -241,9 +248,11 @@ class RosApp(App):
             if self.output_image is not None:
                 try:
                     strand_map, angle_map = img2strand(self.opt, self.cv_image, self.output_image)
+
                     # strand_rgb = cv2.cvtColor(strand_map, cv2.COLOR_BGR2RGB) #
-                    strand_rgb, strands = self.create_hair_strands(np.zeros_like(self.cv_image), self.output_image, angle_map, W=1, n_strands=50, strand_length=50, distance=5)
+                    strand_rgb, strands = self.create_hair_strands(np.zeros_like(self.cv_image), self.output_image, angle_map, W=1, n_strands=20, strand_length=50, distance=5)
                     strand_rgb = cv2.addWeighted(self.cv_image, 0.5, strand_rgb, 0.5, 2.2)
+                    # strand_rgb = cv2.rotate(strand_rgb, cv2.ROTATE_90_COUNTERCLOCKWISE)
 
                     ros_image = self.bridge.cv2_to_imgmsg(strand_rgb, "rgb8")
                     ros_image.header = Header(stamp=rospy.Time.now())

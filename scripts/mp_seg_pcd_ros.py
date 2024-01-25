@@ -18,8 +18,8 @@ import open3d as o3d
 import pyransac3d as pyrsc
 
 # from scripts.mp_segmenter import App
-from scripts.mp_seg_onnx import App
-# from scripts.mp_seg_ros import App
+# from scripts.mp_seg_onnx import App
+from scripts.mp_seg_ros import App
 
 from scripts.create_pcd import CreatePointCloud
 from scripts.crf import CRFSegmentationRefiner
@@ -65,7 +65,7 @@ class RosApp(App):
         self.camera_info = None
         self.points = None
 
-        self.distance = 1.2
+        self.distance = 0.5
         self.create_pcd = None
         # self.refiner = None
         self.sph = pyrsc.Sphere()
@@ -270,7 +270,7 @@ class RosApp(App):
                 if self.mode == "strip":
                     strand_rgb, xyz_strips, angle_map = self.hair_angle_calculator.process_image(self.cv_image, self.output_image, masked_depth, self.camera_info)
                     # create_and_publish_strips_markers(self.strips_pub, self.frame_id, xyz_strips)
-                    strand_rgb, strands = self.create_hair_strands(strand_rgb, self.output_image, angle_map.to("cpu").numpy().copy(), W=self.size, n_strands=50, strand_length=50, distance=10)
+                    strand_rgb, strands = self.create_hair_strands(strand_rgb, self.output_image, angle_map.to("cpu").numpy().copy(), W=self.size, n_strands=20, strand_length=50, distance=10)
                     strand_rgb = cv2.addWeighted(self.cv_image, 0.5, strand_rgb, 0.5, 2.2)
                 if self.mode == "gabor":
                     strand_rgb, angle_map = self.hair_angle_calculator.process_image(self.cv_image, self.output_image, masked_depth, self.camera_info)
@@ -284,7 +284,7 @@ class RosApp(App):
                 if self.mode == "nn":
                     strand_map, angle_map = img2strand(self.opt, self.cv_image, self.output_image)
                     strand_rgb = cv2.cvtColor(strand_map, cv2.COLOR_BGR2RGB)
-                    strand_rgb, strands = self.create_hair_strands(np.zeros_like(self.cv_image), self.output_image, angle_map, W=1, n_strands=50, strand_length=50, distance=5)
+                    strand_rgb, strands = self.create_hair_strands(np.zeros_like(self.cv_image), self.output_image, angle_map, W=1, n_strands=20, strand_length=50, distance=5)
                     strand_rgb = cv2.addWeighted(self.cv_image, 0.5, strand_rgb, 0.5, 2.2)
                     # depth_2d_map = img2depth(self.opt, self.cv_image, self.output_image)
                     # depth_map_2d_msg= self.bridge.cv2_to_imgmsg(depth_2d_map, "bgr8")
@@ -306,11 +306,11 @@ class RosApp(App):
                             self.cloud_pub.publish(largest_cloud_msg)
 
                     # ransac
-                    # if len(closest_cloud[:,:3]) > 4:
-                    #     center, radius, sph_inliers = self.sph.fit(closest_cloud[:,:3].astype(np.float32),thresh=0.05, maxIteration=100)
-                    # if (center is not None) and (radius is not None):
-                    #     sph_msg = create_sphere_marker(center, radius, self.frame_id)
-                    #     self.sphere_pub.publish(sph_msg)
+                    if len(closest_cloud[:,:3]) > 4:
+                        center, radius, sph_inliers = self.sph.fit(closest_cloud[:,:3].astype(np.float32),thresh=0.1, maxIteration=100)
+                    if (center is not None) and (radius is not None):
+                        sph_msg = create_sphere_marker(center, radius, self.frame_id)
+                        self.sphere_pub.publish(sph_msg)
                     # estimated_plane, plane_inliers = self.ransac(closest_cloud[:,:3][::4], 0.3, 3, 50)
 
                     # if (estimated_plane is not None) and (plane_inliers is not None):
