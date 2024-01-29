@@ -40,6 +40,10 @@ def create_plane_and_inliers_markers(plane, inliers, points, plane_scale=(0.5, 0
     normal_vector = np.array([a, b, c])
     normal_vector_normalized = normal_vector / np.linalg.norm(normal_vector)
 
+    # 점군의 중심 계산
+    inliers_points = np.array([points[i] for i in inliers])
+    centroid = np.mean(inliers_points, axis=0)
+
     # Quaternion for plane orientation
     up_vector = np.array([0, 0, 1])  # Z-axis as the up vector
     quaternion = tf_trans.quaternion_about_axis(
@@ -51,9 +55,9 @@ def create_plane_and_inliers_markers(plane, inliers, points, plane_scale=(0.5, 0
     plane_marker.header.frame_id = frame_id
     plane_marker.type = Marker.CUBE
     plane_marker.action = Marker.ADD
-    plane_marker.pose.position.x = -d * normal_vector_normalized[0]
-    plane_marker.pose.position.y = -d * normal_vector_normalized[1]
-    plane_marker.pose.position.z = -d * normal_vector_normalized[2]
+    plane_marker.pose.position.x = centroid[0]
+    plane_marker.pose.position.y = centroid[1]
+    plane_marker.pose.position.z = centroid[2]
     plane_marker.pose.orientation = Quaternion(*quaternion)
     plane_marker.scale.x, plane_marker.scale.y, plane_marker.scale.z = plane_scale
     plane_marker.color.a = 1.0  # Transparency
@@ -79,7 +83,6 @@ def create_plane_and_inliers_markers(plane, inliers, points, plane_scale=(0.5, 0
         inliers_marker.points.append(p)
 
     return plane_marker, inliers_marker
-
 def create_and_publish_strips_markers(marker_pub, frame_id, xyz_strips, line_width=0.001, r=1.0, g=0.0, b=0.0, a=1.0):
     """
     여러 3D 좌표 쌍을 사용하여 MarkerArray를 생성하고 발행합니다.

@@ -306,41 +306,69 @@ class HairAngleCalculator:
         a_x = int(p_x // W)
         return a_x, a_y
 
-    # calculate path
-    def cal_flow_path(self, p_0, mask, img, k, W, max_iter, angles):
-        (y, x) = img.shape[:2]
-        p_t = p_0
+    def cal_flow_path(self, p_0, mask, img, k, W, max_iter, angles, max_angle_change=np.pi/4):
+        (height, width) = img.shape[:2]
+        p_t = np.array(p_0, dtype=int)  # 안전한 타입 변환
         path_ = []
-        a_x, a_y = self.cal_angle_map_xy(p_t[0], p_t[1], W)
-        a_x = np.clip(a_x, 0, angles.shape[1]-1)
-        a_y = np.clip(a_y, 0, angles.shape[0]-1)
-        angle_t = angles[a_y, a_x]
-        i = 0
-        while (mask[p_t[0],p_t[1]] > 0 and p_t[1] < x-1 and p_t[0] < y-1 and i < max_iter):
-            path_.append(p_t[::-1].copy())
+        prev_angle = None  # 이전 각도 초기화
+
+        for _ in range(max_iter):
+            if not (0 <= p_t[0] < height and 0 <= p_t[1] < width and mask[p_t[0], p_t[1]] > 0):
+                break  # 범위를 벗어나거나 마스크 조건을 만족하지 않으면 종료
+
+            path_.append(p_t[::-1].copy())  # 현재 위치를 경로에 추가
 
             a_x, a_y = self.cal_angle_map_xy(p_t[0], p_t[1], W)
-            if a_x == angles.shape[1]:
-                a_x -= 1
-            if a_y == angles.shape[0]:
-                a_y -= 1
+            a_x, a_y = np.clip([a_x, a_y], [0, 0], [angles.shape[1]-1, angles.shape[0]-1])
 
             angle_t = angles[a_y, a_x]
 
-            p_t[1] = int(p_t[1] + k*np.cos(angle_t))
-            p_t[0] = int(p_t[0] + k*np.sin(angle_t))
+            # if prev_angle is not None and abs(angle_t - prev_angle) > max_angle_change:
+            #     break
+            # prev_angle = angle_t  # 현재 각도를 이전 각도로 업데이트
 
-            if p_t[0]  < 0:
-                p_t[0] = 0
-            if p_t[1]  < 0:
-                p_t[1] = 0
-            if p_t[1]  > x-1:
-                p_t[1] = x-1
-            if p_t[0]  > y-1:
-                p_t[0] = y-1
-            i += 1
+            # 다음 위치 계산
+            delta_x = int(k * np.cos(angle_t))
+            delta_y = int(k * np.sin(angle_t))
+            p_t += [delta_y, delta_x]  # y, x 순서 주의
 
-        return path_
+        return np.asarray(path_)
+
+    # calculate path
+    # def cal_flow_path(self, p_0, mask, img, k, W, max_iter, angles):
+    #     (y, x) = img.shape[:2]
+    #     p_t = p_0
+    #     path_ = []
+    #     a_x, a_y = self.cal_angle_map_xy(p_t[0], p_t[1], W)
+    #     a_x = np.clip(a_x, 0, angles.shape[1]-1)
+    #     a_y = np.clip(a_y, 0, angles.shape[0]-1)
+    #     angle_t = angles[a_y, a_x]
+    #     i = 0
+    #     while (mask[p_t[0],p_t[1]] > 0 and p_t[1] < x-1 and p_t[0] < y-1 and i < max_iter):
+    #         path_.append(p_t[::-1])
+
+    #         a_x, a_y = self.cal_angle_map_xy(p_t[0], p_t[1], W)
+    #         if a_x == angles.shape[1]:
+    #             a_x -= 1
+    #         if a_y == angles.shape[0]:
+    #             a_y -= 1
+
+    #         angle_t = angles[a_y, a_x]
+
+    #         p_t[1] = int(p_t[1] + k*np.cos(angle_t))
+    #         p_t[0] = int(p_t[0] + k*np.sin(angle_t))
+
+    #         if p_t[0]  < 0:
+    #             p_t[0] = 0
+    #         if p_t[1]  < 0:
+    #             p_t[1] = 0
+    #         if p_t[1]  > x-1:
+    #             p_t[1] = x-1
+    #         if p_t[0]  > y-1:
+    #             p_t[0] = y-1
+    #         i += 1
+
+    #     return path_
 
     def process_image(self, frame, hair_mask, depth_image, camera_info):
         # resize_cef = 1
