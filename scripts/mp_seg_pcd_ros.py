@@ -69,9 +69,10 @@ class RosApp(App):
         self.create_pcd = None
         # self.refiner = None
         self.sph = pyrsc.Sphere()
-        self.mode = "nn"
+        self.mode = "strip"
         self.size = 15
         self.hair_angle_calculator = HairAngleCalculator(size=self.size, mode=self.mode)
+
         self.frame_id = self.camera_ns+"_color_optical_frame"
 
         self.decompressed = self.opt.decompressed
@@ -80,7 +81,7 @@ class RosApp(App):
             rospy.Subscriber("/"+self.camera_ns+"/color/image_rect_color/decompressed", Image, self.image_callback)
             rospy.Subscriber("/"+self.camera_ns+"/aligned_depth_to_color/image_raw/decompressed", Image, self.depth_callback)
         else:
-            rospy.Subscriber("/"+self.camera_ns+"/rviz/image", Image, self.image_callback)
+            rospy.Subscriber("/"+self.camera_ns+"/color/image_rect_color", Image, self.image_callback)
             rospy.Subscriber("/"+self.camera_ns+"/aligned_depth_to_color/image_raw", Image, self.depth_callback)
         rospy.Subscriber("/"+self.camera_ns+"/aligned_depth_to_color/camera_info", CameraInfo, self.camera_info_callback)
 
@@ -161,14 +162,11 @@ class RosApp(App):
             strands = self.approximate_bezier(strands, strand_length)
             np.random.seed(42)
             color_list = np.random.randint(255, size=(len(strands), 3))
-            for i, path in enumerate(strands):
+            for i, strand in enumerate(strands):
                 # color = (np.random.randint(0, 255),np.random.randint(0, 255),np.random.randint(0, 255))
-
-                for j, point in enumerate(path):
-
-                    color = tuple((color_list[i]-j*gradiation).tolist()) # -j*n is for gradiation
-
-                    cv2.circle(img_edge, (point[0], point[1]), 1, (color), -1)
+                color = tuple((color_list[i]).tolist()) # -j*n is for gradiation
+                for j in range(len(strand) - 1):
+                    cv2.line(img_edge, tuple(strand[j].astype(int)), tuple(strand[j+1].astype(int)), color, 3)
 
         return img_edge, strands
 
@@ -228,6 +226,29 @@ class RosApp(App):
             bezier_strands.append(self.bezier_curve(strand, n_points))
         return np.asarray(bezier_strands)
 
+    def visualize_orientation_difference(self, image, hair_mask, orientation_map_large, W_large, orientation_map_small, angle_difference_threshold=np.pi/4):
+        # 시각화를 위한 결과 이미지 초기화
+        result_image = image.copy()
+
+        # 큰 오리엔테이션 맵의 각 그리드를 순회
+        for i in range(0, orientation_map_large.shape[0], W_large):
+            for j in range(0, orientation_map_large.shape[1], W_large):
+                # 해당 그리드의 방향성 추출
+                orientation_large = orientation_map_large[i:i+W_large, j:j+W_large]
+
+                # 작은 그리드의 방향성을 큰 그리드 내부에서 추출
+                orientation_small_within_large = orientation_map_small[i:i+W_large, j:j+W_large]
+
+                # 방향성 차이 계산
+                angle_difference = np.abs(orientation_large - orientation_small_within_large)
+
+                # 방향성 차이가 임계값을 초과하는 경우
+                if np.any(angle_difference > angle_difference_threshold):
+                    # 해당 큰 오리엔테이션 그리드 시각화
+                    cv2.rectangle(result_image, (j, i), (j+W_large, i+W_large), (0, 0, 255), 2)
+
+        return result_image
+
     def main(self):
         while not self.camera_info:
             continue
@@ -269,13 +290,23 @@ class RosApp(App):
 
                 if self.mode == "strip":
                     strand_rgb, xyz_strips, angle_map = self.hair_angle_calculator.process_image(self.cv_image, self.output_image, masked_depth, self.camera_info)
+                    # strand_rgb_large, xyz_strips_large, angle_map_large = self.hair_angle_calculator_large.process_image(self.cv_image, self.output_image, masked_depth, self.camera_info)
+                    # print(angle_map)
+                    # print(angle_map_large)
                     # create_and_publish_strips_markers(self.strips_pub, self.frame_id, xyz_strips)
-                    strand_rgb, strands = self.create_hair_strands(strand_rgb, self.output_image, angle_map.to("cpu").numpy().copy(), W=self.size, n_strands=20, strand_length=50, distance=10)
-                    strand_rgb = cv2.addWeighted(self.cv_image, 0.5, strand_rgb, 0.5, 2.2)
+                    # strand_rgb, strands = self.create_hair_strands(strand_rgb, self.output_image, angle_map.to("cpu").numpy().copy(), W=self.size, n_strands=50, strand_length=20, distance=5)
+                    hair_image = self.cv_image * (self.output_image[:,:,np.newaxis]/255)
+                    # strand_rgb = cv2.addWeighted(strand_rgb, 0.5, strand_rgb_large, 0.5, 2.2)
+                    print(hair_image.shape)
+                    print(strand_rgb.shape)
+                    strand_rgb = cv2.addWeighted(hair_image.astype(np.uint8), 0.5, strand_rgb, 0.5, 2.2)
+
+                    # strand_rgb = strand_rgb.astype(np.uint8)
+
                 if self.mode == "gabor":
                     strand_rgb, angle_map = self.hair_angle_calculator.process_image(self.cv_image, self.output_image, masked_depth, self.camera_info)
                     # strands = self.create_hair_strands_gabor(angle_map)
-                    strand_rgb, strands = self.create_hair_strands(strand_rgb, self.output_image, angle_map, W=1, n_strands=50, strand_length=50, distance=5)
+                    strand_rgb, strands = self.create_hair_strands(strand_rgb, self.output_image, angle_map, W=1, n_strands=50, strand_length=10, distance=5)
                     # strand_rgb = self.visualize_hair_strands(strand_rgb, strands)
                 if self.mode == "color":
                     strand_rgb, xyz_strips, angle_map = self.hair_angle_calculator.process_image(self.cv_image, self.output_image, masked_depth, self.camera_info)
@@ -284,8 +315,12 @@ class RosApp(App):
                 if self.mode == "nn":
                     strand_map, angle_map = img2strand(self.opt, self.cv_image, self.output_image)
                     strand_rgb = cv2.cvtColor(strand_map, cv2.COLOR_BGR2RGB)
-                    strand_rgb, strands = self.create_hair_strands(np.zeros_like(self.cv_image), self.output_image, angle_map, W=1, n_strands=20, strand_length=50, distance=5)
-                    strand_rgb = cv2.addWeighted(self.cv_image, 0.5, strand_rgb, 0.5, 2.2)
+                    strand_rgb, strands = self.create_hair_strands(np.zeros_like(self.cv_image), self.output_image, angle_map, W=1, n_strands=50, strand_length=20, distance=5)
+                    hair_image = self.cv_image * (self.output_image[:,:,np.newaxis]/255)
+                    # strand_rgb = cv2.addWeighted(strand_rgb, 0.5, strand_rgb_large, 0.5, 2.2)
+                    strand_rgb = cv2.addWeighted(hair_image.astype(np.uint8), 0.5, strand_rgb, 0.5, 2.2)
+
+                    # strand_rgb = cv2.addWeighted(self.cv_image, 0.5, strand_rgb, 0.5, 2.2)
 
                     # depth_2d_map = img2depth(self.opt, self.cv_image, self.output_image)
                     # depth_map_2d_msg= self.bridge.cv2_to_imgmsg(depth_2d_map, "bgr8")

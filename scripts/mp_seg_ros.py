@@ -824,7 +824,7 @@ class App:
             current_strands = [strand for strand, l in zip(strands, labels) if l == label]
             # 대표 스트랜드 계산
             representative_strand = self.calculate_representative_strand(current_strands)
-            representative_strand = self.extend_strands_with_orientation_map(representative_strand, angle_map, image, hair_mask, 5, 1, 100)# strands, orientation_map, image, hair_mask, distance=1, W=15, max_length=10)
+            representative_strand = self.extend_strands_with_orientation_map(representative_strand, angle_map, image, hair_mask, 5, 15, 100)# strands, orientation_map, image, hair_mask, distance=1, W=15, max_length=10)
             representative_strand = self.approximate_bezier([representative_strand], 20, 0)[0]
             # if not self.switch:
             #     self.parameters = self.parameterize_strand(representative_strand, out, mean_parting_point)
