@@ -185,7 +185,6 @@ class HairAngleCalculator:
         result = cv2.cvtColor(np.zeros(im.shape[:2], np.uint8), cv2.COLOR_GRAY2RGB)
         mask_threshold = (W-1)**2
 
-
         # PyTorch 텐서를 Numpy 배열로 변환
         if mask.is_cuda:
             mask_np = mask.cpu().numpy().astype(np.uint8)
@@ -223,6 +222,51 @@ class HairAngleCalculator:
                         xy_list.append((center, end))
                         cv2.line(result, center, end, color, 2)
         return xy_list, result
+
+    def visualize_angle_differences_(self, im, mask, angles, W, angle_diff_threshold=np.pi/6, boundary_margin=10):
+        (y, x) = im.shape[:2]
+        result = cv2.cvtColor(np.zeros(im.shape[:2], np.uint8), cv2.COLOR_GRAY2RGB)
+        mask_threshold = (W-1)**2
+
+        tangled_mask = np.zeros_like(mask.cpu().numpy(), dtype=np.uint8)
+
+        # 마스크의 경계 찾기
+        contours, _ = cv2.findContours(mask.cpu().numpy().astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        for i in range(0, x, W):
+            for j in range(0, y, W):
+                radian = torch.sum(mask[j:j + W, i:i + W])
+
+                if radian > mask_threshold:
+                    idx_i = i // W
+                    idx_j = j // W
+
+                    center = (i + W//2, j + W//2)
+
+                    # 마스크 경계로부터의 거리가 boundary_margin 이상인지 확인
+                    # distance_to_edge = min([cv2.pointPolygonTest(contour, center, True) for contour in contours])
+                    # if distance_to_edge < boundary_margin:
+                    #     continue  # 마스크 경계 근처는 제외
+
+                    if idx_j < angles.shape[0] and idx_i < angles.shape[1]:
+                        angle = angles[idx_j, idx_i].item()
+                        surrounding_angles = angles[max(idx_j-1, 0):min(idx_j+2, angles.shape[0]), max(idx_i-1, 0):min(idx_i+2, angles.shape[1])]
+                        mean_surrounding_angle = torch.mean(surrounding_angles).item()
+
+                        angle_difference = abs(angle - mean_surrounding_angle)
+                        if angle_difference > angle_diff_threshold:
+                            tangled_mask[j:j+W, i:i+W] = 255
+
+        num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(tangled_mask, connectivity=8)
+
+        for i in range(1, num_labels):  # 0번 라벨(배경)은 제외
+            x, y, w, h, area = stats[i]
+            if area < 1000:  # 너무 작은 영역은 무시
+                continue
+            cv2.rectangle(result, (x, y), (x + w, y + h), (0, 0, 255), 2)
+            cv2.putText(result, f'Area {i}', (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+
+        return result
 
     def visualize_color_angles(self, im, mask, angles, W):
         (y, x) = im.shape[:2]
@@ -476,6 +520,35 @@ class HairAngleCalculator:
 
         return vis_image
 
+
+    def find_tangled_areas(self, angle_differences, angle_diff_threshold=np.pi/6, min_area=50):
+        # 각도 차이가 임계값보다 큰 부분을 1로, 작거나 같은 부분을 0으로 하는 바이너리 이미지 생성
+        tangled_mask = (angle_differences > angle_diff_threshold).astype(np.uint8)
+
+        # 연결된 컴포넌트 찾기
+        num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(tangled_mask, connectivity=8)
+
+        tangled_areas = []
+        for i in range(1, num_labels):  # 0번 라벨(배경)은 제외
+            x, y, w, h, area = stats[i]
+            if area >= min_area:  # 최소 영역 크기보다 큰 컴포넌트만 선택
+                tangled_areas.append((x, y, w, h))
+
+        return tangled_areas
+
+    def visualize_tangled_areas(self, image, tangled_areas):
+        # 이미지의 복사본을 생성하여 원본 이미지를 보존
+        vis_image = image.copy()
+
+        # 흐트러진 부분이 밀집된 영역을 사각형으로 그리기
+        for i, (x, y, w, h) in enumerate(tangled_areas):
+            # 사각형 그리기
+            cv2.rectangle(vis_image, (x, y), (x + w, y + h), (0, 0, 255), 2)
+            # 영역 번호 텍스트 추가
+            cv2.putText(vis_image, f'Area {i+1}', (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+
+        return vis_image
+
     def process_image(self, frame, hair_mask, depth_image, camera_info):
         # resize_cef = 1
         # frame = cv2.resize(frame, None, fx=resize_cef, fy=resize_cef)
@@ -491,11 +564,16 @@ class HairAngleCalculator:
         debug_map = None
         angle_map = self.calculate_angles(torch.Tensor(gray_map), self.size)
         if self.mode == "strip":
-            xy_list, angle_visual= self.visualize_angle_differences(gray_map, torch.Tensor(hair_mask), angle_map, self.size, np.pi/4, 5)
-            angle_most_visual = self.visualize_most_tangled_area(frame, torch.Tensor(hair_mask), angle_map, self.size, np.pi/3, 2, 50)
+            # xy_list, angle_visual= self.visualize_angles(gray_map, torch.Tensor(hair_mask), angle_map, self.size)
+            # angle_visual= self.visualize_angle_differences_(gray_map, torch.Tensor(hair_mask), angle_map, self.size, np.pi/6, 0)
+            xy_list, angle_visual= self.visualize_angle_differences(gray_map, torch.Tensor(hair_mask), angle_map, self.size, np.pi/6, 0)
+
+            # angle_visual = self.visualize_most_tangled_area(frame, torch.Tensor(hair_mask), angle_map, self.size, np.pi/3, 10, 80)
             # xyz_strips = self.create_xyz_strips(xy_list, depth_image, camera_info)
             # debug_map = cv2.addWeighted(frame, 0.5, angle_visual, 0.5, 2.2)
-            debug_map = angle_most_visual
+            debug_map = angle_visual
+
+            # debug_map = angle_most_visual
             return debug_map, xyz_strips, angle_map
         elif self.mode == "gabor":
             color_map, orientation_map = self.seg_hair(gray_map, hair_mask)

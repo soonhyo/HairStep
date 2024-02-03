@@ -291,6 +291,31 @@ class App:
 
         return img_edge, strands
 
+    def remove_strands_with_start_point_in_combined_points(self, strands):
+        removed_strands = []  # 제거될 스트랜드들을 저장할 리스트
+        combined_points = []  # 모든 스트랜드의 두 번째 점부터 마지막 점까지를 포함할 점군
+
+        # 모든 스트랜드의 나머지 점들을 combined_points에 추가
+        for strand in strands:
+            combined_points.extend(strand[1:])  # 첫 번째 점을 제외하고 추가
+
+        for i, strand in enumerate(strands):
+            start_point = strand[0]  # 현재 스트랜드의 첫 번째 점
+            is_removed = False
+
+            # 첫 번째 점이 combined_points 점군에 포함되는지 확인
+            if any((start_point == point).all() for point in combined_points):
+                removed_strands.append(strand)
+                is_removed = True
+
+            if is_removed:
+                strands[i] = None  # 제거될 스트랜드는 None으로 표시
+
+        # None으로 표시된 제거된 스트랜드를 실제로 리스트에서 제거
+        strands = [strand for strand in strands if strand is not None]
+
+        return removed_strands  # 제거된 스트랜드들 반환
+
     def cluster_and_visualize_strands(self, image, strands, n_clusters=2):
         if len(strands) < n_clusters:
             sorted_labels = []
@@ -299,7 +324,10 @@ class App:
 
         # 스트랜드의 시작점을 추출하여 클러스터링에 사용
         # K-Means 클러스터링 수행
-        strands_ = strands[:,int(len(strands[0])/2)].reshape(len(strands), -1)
+        # strands_ = strands[:,int(len(strands[0])/2)].reshape(len(strands), -1)
+        # strands_ = strands[:,-1].reshape(len(strands), -1)
+        # strands_ = strands.reshape(len(strands), -1)
+        strands_ = strands[:,:,0].reshape(len(strands), -1)
         kmeans = KMeans(n_clusters=n_clusters, n_init='auto', random_state=0, algorithm='elkan').fit(strands_)
         # eps = 0.001
         # min_samples=5
@@ -813,7 +841,7 @@ class App:
         # print(all_points)
         return np.mean(strands, axis=0).reshape(-1, 2)
 
-    def visualize_representative_strands(self, image, strands, labels, hulls, hair_mask, angle_map, out, mean_parting_point):
+    def visualize_representative_strands(self, image, strands, labels, hulls, hair_mask, angle_map):
         """라벨별 대표 스트랜드를 이미지에 시각화하고 이미지를 반환합니다."""
         # 라벨별로 스트랜드 그룹화
         unique_labels = np.unique(labels)
@@ -825,7 +853,7 @@ class App:
             # 대표 스트랜드 계산
             representative_strand = self.calculate_representative_strand(current_strands)
             representative_strand = self.extend_strands_with_orientation_map(representative_strand, angle_map, image, hair_mask, 5, 15, 100)# strands, orientation_map, image, hair_mask, distance=1, W=15, max_length=10)
-            representative_strand = self.approximate_bezier([representative_strand], 20, 0)[0]
+            representative_strand = self.approximate_bezier([representative_strand], 10, 0)[0]
             # if not self.switch:
             #     self.parameters = self.parameterize_strand(representative_strand, out, mean_parting_point)
             #     self.switch = True

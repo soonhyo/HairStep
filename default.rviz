@@ -189,7 +189,7 @@ Visualization Manager:
       Shaft Length: 0.23000000417232513
       Shaft Radius: 0.009999999776482582
       Shape: Axes
-      Topic: /strand/camera
+      Topic: /comb/path
       Unreliable: false
       Value: true
   Enabled: true
@@ -220,7 +220,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 0.9400668740272522
+      Distance: 0.9930354952812195
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -236,9 +236,9 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.2897970676422119
+      Pitch: 0.21479696035385132
       Target Frame: <Fixed Frame>
-      Yaw: 4.979522228240967
+      Yaw: 3.399524450302124
     Saved: ~
 Window Geometry:
   Displays:

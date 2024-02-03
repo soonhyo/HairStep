@@ -69,7 +69,7 @@ class RosApp(App):
         self.create_pcd = None
         # self.refiner = None
         self.sph = pyrsc.Sphere()
-        self.mode = "strip"
+        self.mode = "nn"
         self.size = 15
         self.hair_angle_calculator = HairAngleCalculator(size=self.size, mode=self.mode)
 

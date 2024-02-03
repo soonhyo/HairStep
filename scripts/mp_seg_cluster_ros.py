@@ -72,7 +72,7 @@ class RosApp(App):
         self.camera_info = None
         self.points = None
 
-        self.distance = 0.6
+        self.distance = 0.9
         self.create_pcd = None
         # self.refiner = None
         self.sph = pyrsc.Sphere()
@@ -401,7 +401,7 @@ class RosApp(App):
 
             # y축 방향 설정: 현재 포인트에서 다음 포인트로의 벡터
             y_axis = next_point - current_point
-            y_axis /= np.linalg.norm(y_axis)  # 정규화
+            y_axis /= -np.linalg.norm(y_axis)  # 정규화
 
             # z축 방향 설정: 평면의 법선 벡터
             z_axis = normal_vector
@@ -491,6 +491,8 @@ class RosApp(App):
                     strand_map, angle_map = img2strand(self.opt, self.cv_image, self.output_image)
                     # strand_rgb = cv2.cvtColor(strand_map, cv2.COLOR_BGR2RGB)
                     strand_rgb, strands = self.create_hair_strands(np.zeros_like(self.cv_image), self.output_image, angle_map, W=1, n_strands=50, strand_length=100, distance=20)
+                    strands = self.remove_strands_with_start_point_in_combined_points(strands)
+
                     strand_rgb = cv2.addWeighted(self.cv_image, 0.5, strand_rgb, 0.5, 2.2)
                     # self.cv_image= cv2.cvtColor(self.cv_image, cv2.COLOR_RGB2BGR)
 
@@ -499,35 +501,36 @@ class RosApp(App):
                 out = self.face_detector.run(self.cv_image)
                 visualized_image = self.face_detector.draw_landmarks_on_image(visualized_image, out)
                 direction_vectors_reversed = self.calculate_direction_vectors_reversed(strands_reversed)
-                checked_start_points, checked_strands = self.find_strands_with_large_direction_difference_reversed(strands_reversed, direction_vectors_reversed, 20)
+                # checked_start_points, checked_strands = self.find_strands_with_large_direction_difference_reversed(strands_reversed, direction_vectors_reversed, 20)
                 visualized_image, hulls = self.visualize_convex_hulls(strands, labels, visualized_image)
-                if checked_start_points is not None:
-                    mean_parting_point = np.mean(checked_start_points, axis=0)
-                    print("mean:", mean_parting_point)
-                visualized_image = self.visualize_checked_start_points(visualized_image, checked_start_points)
-                face_landmarks_list = self.face_detector.get_landmarks()
-                face_landmarks_np = self.face_detector.face_landmarks_np
-                visualized_image, representative_strands = self.visualize_representative_strands(visualized_image, strands, labels, hulls, self.output_image, angle_map, face_landmarks_np, mean_parting_point)
-                if len(face_landmarks_list) > 0 and not np.isnan(mean_parting_point).any():
-                    eye1 = face_landmarks_list[0][self.eye1_ind]
-                    eye2 = face_landmarks_list[0][self.eye2_ind]
-                    angle = self.calculate_angle(eye1, eye2, mean_parting_point)
-                    print(angle)
-                    visualized_image = self.visualize_line_between_eyes_and_parting_point(visualized_image, eye1, eye2, mean_parting_point)
+                # if checked_start_points is not None:
+                #     mean_parting_point = np.mean(checked_start_points, axis=0)
+                #     print("mean:", mean_parting_point)
+                # visualized_image = self.visualize_checked_start_points(visualized_image, checked_start_points)
+                # face_landmarks_list = self.face_detector.get_landmarks()
+                # face_landmarks_np = self.face_detector.face_landmarks_np
+                visualized_image, representative_strands = self.visualize_representative_strands(visualized_image, strands, labels, hulls, self.output_image, angle_map)
+                # if len(face_landmarks_list) > 0 and not np.isnan(mean_parting_point).any():
+                #     eye1 = face_landmarks_list[0][self.eye1_ind]
+                #     eye2 = face_landmarks_list[0][self.eye2_ind]
+                #     angle = self.calculate_angle(eye1, eye2, mean_parting_point)
+                #     print(angle)
+                #     visualized_image = self.visualize_line_between_eyes_and_parting_point(visualized_image, eye1, eye2, mean_parting_point)
 
                 if len(hulls) > 0:
-                    for i, hull in enumerate([hulls[0]]):
+                    for i, hull in enumerate(hulls):
                         hull_3d = self.extract_points_from_hull(self.cv_depth, hull)
-                        print(hull_3d)
+                        # print(hull_3d)
                         if len(hull_3d) > 0:
-                            estimated_plane, plane_inliers = self.ransac(hull_3d[:,:3], 0.3, 3, 50)
+                            estimated_plane, plane_inliers = self.ransac(hull_3d[:,:3], 0.01, 3, 100)
                             if (estimated_plane is not None) and (plane_inliers is not None):
                                 plane_msg, plane_inliers_msg = create_plane_and_inliers_markers(estimated_plane, plane_inliers, hull_3d[:,:3], (0.5, 0.5, 0.001), frame_id=self.frame_id)
                                 self.plane_pub.publish(plane_msg)
                                 projected_strand = self.project_strand_onto_plane(representative_strands[i], self.cv_depth, estimated_plane)
                                 strand_posearray = self.generate_combed_path_with_orientation_on_plane(projected_strand, estimated_plane, time_now, 5 ,self.frame_id)
-                                print(strand_posearray)
+                                # print(strand_posearray)
                                 self.strand_path_pub.publish(strand_posearray)
+                        time.sleep(1)
                     # depth_2d_map = img2depth(self.opt, self.cv_image, self.output_image)
                     # depth_map_2d_msg= self.bridge.cv2_to_imgmsg(depth_2d_map, "bgr8")
                     # depth_map_2d_msg.header = Header(stamp=time_now)
