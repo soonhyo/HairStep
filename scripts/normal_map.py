@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 
-def compute_normal_map(depth_image):
+def compute_normal_map(depth_image, ksize=3):
     rows, cols = depth_image.shape
 
     x, y = np.meshgrid(np.arange(cols), np.arange(rows))
@@ -9,8 +9,8 @@ def compute_normal_map(depth_image):
     y = y.astype(np.float32)
 
     # Calculate the partial derivatives of depth with respect to x and y
-    dx = cv2.Sobel(depth_image, cv2.CV_32F, 1, 0)
-    dy = cv2.Sobel(depth_image, cv2.CV_32F, 0, 1)
+    dx = cv2.Sobel(depth_image, cv2.CV_32F, 1, 0, ksize=ksize)
+    dy = cv2.Sobel(depth_image, cv2.CV_32F, 0, 1, ksize=ksize)
 
     # Compute the normal vector for each pixel
     normal = np.dstack((-dx, -dy, np.ones((rows, cols))))

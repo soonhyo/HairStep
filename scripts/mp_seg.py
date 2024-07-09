@@ -120,7 +120,7 @@ class App:
                 break
 
         # When everything is done, release the capture
-        cap.release()
+11;rgb:3030/0a0a/2424cap.release()
         cv2.destroyAllWindows()
 if __name__=="__main__":
     app = App()

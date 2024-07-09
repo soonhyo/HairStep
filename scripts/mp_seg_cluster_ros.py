@@ -34,6 +34,7 @@ import segmentation_refinement as refine
 from sklearn.cluster import KMeans
 from scripts.detectors_ros import MP
 
+from std_msgs.msg import Int32
 from geometry_msgs.msg import Pose, PoseArray, Quaternion
 import tf
 
@@ -91,6 +92,14 @@ class RosApp(App):
             rospy.Subscriber("/"+self.camera_ns+"/color/image_rect_color", Image, self.image_callback)
             rospy.Subscriber("/"+self.camera_ns+"/aligned_depth_to_color/image_raw", Image, self.depth_callback)
         rospy.Subscriber("/"+self.camera_ns+"/aligned_depth_to_color/camera_info", CameraInfo, self.camera_info_callback)
+         # task_status 구독
+        self.task_status = 0
+        rospy.Subscriber("/task_status", Int32, self.task_status_callback)
+
+        # 클러스터 관련 변수
+        self.current_cluster_index = 0
+        self.clusters_completed = False
+        self.waiting_for_task_completion = False
 
     def image_callback(self, data):
         try:
@@ -103,6 +112,21 @@ class RosApp(App):
             self.cv_depth = self.bridge.imgmsg_to_cv2(data, "passthrough")
         except CvBridgeError as e:
             rospy.logerr(e)
+
+    def task_status_callback(self, msg):
+        self.task_status = msg.data
+        if self.task_status == 0 and self.waiting_for_task_completion:
+            self.waiting_for_task_completion = False
+            self.current_cluster_index += 1
+            if self.current_cluster_index >= len(self.cluster_paths):
+                self.current_cluster_index = 0
+                self.clusters_completed = True
+
+    def send_next_cluster_path(self):
+        if not self.waiting_for_task_completion and not self.clusters_completed:
+            strand_posearray = self.cluster_paths[self.current_cluster_index]
+            self.strand_path_pub.publish(strand_posearray)
+            self.waiting_for_task_completion = True
 
     def apply_depth_mask(self, depth_image, mask):
         # 마스크에 해당하는 깊이 정보만을 포함하는 깊이 이미지 생성

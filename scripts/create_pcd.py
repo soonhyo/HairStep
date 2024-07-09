@@ -10,7 +10,7 @@ import open3d as o3d
 class CreatePointCloud(object):
     def __init__(self, camera_info):
         self.camera_info = camera_info
-        print("initialized create point cloud instance...")
+        # print("initialized create point cloud instance...")
     def filter_points_in_distance_range(self, points, min_distance=0.01, max_distance=1.0):
         # 카메라(원점)로부터의 거리 계산
         points = points.astype(np.float32)
@@ -91,3 +91,52 @@ class CreatePointCloud(object):
         # PointCloud2 메시지 생성
         header = Header(frame_id=self.camera_info.header.frame_id, stamp=time_now)
         return points, header, fields
+
+    def create_point_cloud_o3d(self, color_image, depth_image, mask_image, time_now):
+        # 카메라 내부 파라미터 사용
+        fx = self.camera_info.K[0]
+        fy = self.camera_info.K[4]
+        cx = self.camera_info.K[2]
+        cy = self.camera_info.K[5]
+
+        mask_3d = mask_image[:, :, np.newaxis].astype(np.bool_)
+
+        v, u = np.indices((depth_image.shape[0], depth_image.shape[1]))
+        z = depth_image / 1000.0
+        x = (u - cx) * z / fx
+        y = (v - cy) * z / fy
+
+        points = np.stack((x, y, z), axis=-1).reshape(-1, 3)
+        colors = color_image.reshape(-1, 3) / 255.0
+
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(points)
+
+        print(pcd)
+        # Downsample the point cloud
+        pcd = pcd.voxel_down_sample(voxel_size=0.02)
+
+        # Compute normals
+        pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.01, max_nn=30))
+        normals = np.asarray(pcd.normals)
+        print(normals)
+        # Convert normals to RGB and then to RGBA
+        normals_rgb = ((normals + 1) * 0.5 * 255).astype(np.uint8)
+        r = normals_rgb[:, 0].astype(np.uint32)
+        g = normals_rgb[:, 1].astype(np.uint32)
+        b = normals_rgb[:, 2].astype(np.uint32)
+        # rgba = (r << 16) | (g << 8) | b | 0xFF000000
+        rgba = (0xFF << 24) | (r.astype(np.uint32) << 16) | (g.astype(np.uint32) << 8) | b.astype(np.uint32)
+
+        points_rgba = np.hstack((points, normals, rgba[:, np.newaxis]))
+
+        header = Header()
+        header.stamp = time_now
+        header.frame_id = self.camera_info.header.frame_id
+
+        fields = [PointField('x', 0, PointField.FLOAT32, 1),
+                  PointField('y', 4, PointField.FLOAT32, 1),
+                  PointField('z', 8, PointField.FLOAT32, 1),
+                  PointField('rgba', 12, PointField.UINT32, 1)]
+
+        return points_rgba, header, fields

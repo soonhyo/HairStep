@@ -334,13 +334,13 @@ class RosApp(App):
                 try:
                     ros_image = self.bridge.cv2_to_imgmsg(strand_rgb, "bgr8")
                     ros_image.header = Header(stamp=time_now)
-                    # points, header, fields= self.create_pcd.create_point_cloud(strand_rgb, self.cv_depth, self.output_image, time_now)
-                    # if len(points) != 0:
-                    #     indices= self.create_pcd.filter_points_in_distance_range(points[:,:3], 0.01, self.distance)
-                    #     closest_cloud = points[indices]
-                    #     largest_cloud_msg = pc2.create_cloud(header, fields, closest_cloud)
-                    #     if largest_cloud_msg is not None:
-                    #         self.cloud_pub.publish(largest_cloud_msg)
+                    points, header, fields= self.create_pcd.create_point_cloud(strand_rgb, self.cv_depth, self.output_image, time_now)
+                    if len(points) != 0:
+                        indices= self.create_pcd.filter_points_in_distance_range(points[:,:3], 0.01, self.distance)
+                        closest_cloud = points[indices]
+                        largest_cloud_msg = pc2.create_cloud(header, fields, closest_cloud)
+                        if largest_cloud_msg is not None:
+                            self.cloud_pub.publish(largest_cloud_msg)
 
                     # ransac
                     # if len(closest_cloud[:,:3]) > 4:

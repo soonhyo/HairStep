@@ -6,7 +6,10 @@ import torch
 import torch.nn.functional as F
 from skimage import img_as_ubyte
 
-import scripts.sample_cef_gpu as coh
+try:
+    import scripts.sample_cef_gpu as coh
+except:
+    import sample_cef_gpu as coh
 
 from scipy.interpolate import griddata
 
