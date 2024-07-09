@@ -111,7 +111,7 @@ class RosApp():
         cx = self.camera_info.K[2]
         cy = self.camera_info.K[5]
 
-        for point in point_cloud[::16]:
+        for point in point_cloud[::128]:
             x, y, z = point[0], point[1], point[2]
 
             if z > 0:
@@ -143,17 +143,30 @@ class RosApp():
 
         self.pose_pub.publish(pose_array)
 
-    def vector_to_quaternion(self, vector):
-        # Assumes the vector is normalized
-        angle = np.arccos(vector[2])  # Angle between vector and z-axis
-        axis = np.cross([0, 0, 1], vector)
-        if np.linalg.norm(axis) == 0:
-            # If axis is zero vector, vector is aligned with z-axis
-            axis = [1, 0, 0]
-        axis = axis / np.linalg.norm(axis)
+    def calculate_angles(self, vector):
+        # Normalize the input vector
+        vector = vector / np.linalg.norm(vector)
 
-        quat = tf_trans.quaternion_about_axis(angle, axis)
-        return quat
+        # Define the unit vectors for the x, y, z axes
+        x_axis = np.array([1, 0, 0])
+        y_axis = np.array([0, 1, 0])
+        z_axis = np.array([0, 0, 1])
+
+        # Calculate the angles (in radians)
+        angle_x = np.arccos(np.dot(vector, x_axis))
+        angle_y = np.arccos(np.dot(vector, y_axis))
+        angle_z = np.arccos(np.dot(vector, z_axis))
+
+        return angle_x, angle_y, angle_z
+
+    def vector_to_quaternion(self, vector):
+        # Calculate angles with respect to x, y, z axes
+        angle_x, angle_y, angle_z = self.calculate_angles(vector)
+
+        # Convert Euler angles to quaternion
+        quaternion = tf_trans.quaternion_from_euler(angle_x, angle_y, angle_z)
+
+        return quaternion
 
     def main(self):
         while not rospy.is_shutdown():

@@ -76,7 +76,7 @@ class NormalImageProcessor:
         pose_array = PoseArray()
         pose_array.header = header
 
-        for point in points[::16]:
+        for point in points[::64]:
             x, y, z, rgba = point
             nx, ny, nz = self.rgba_to_normal(rgba)
             # Normalize the normal vector
@@ -87,6 +87,7 @@ class NormalImageProcessor:
             normal = normal / norm
 
             # Convert the normal vector to a quaternion
+            # quat = self.vector_to_quaternion(normal)
             quat = self.vector_to_quaternion(normal)
 
             pose = Pose()
@@ -109,15 +110,30 @@ class NormalImageProcessor:
         normal = np.array([r, g, b]) / 255.0 * 2 - 1
         return normal
 
-    def vector_to_quaternion(self, vector):
-        angle = np.arccos(vector[2])  # Angle between vector and z-axis
-        axis = np.cross([0, 0, 1], vector)
-        if np.linalg.norm(axis) == 0:
-            axis = [1, 0, 0]
-        axis = axis / np.linalg.norm(axis)
+    def calculate_angles(self, vector):
+        # Normalize the input vector
+        vector = vector / np.linalg.norm(vector)
 
-        quat = tf_trans.quaternion_about_axis(angle, axis)
-        return quat
+        # Define the unit vectors for the x, y, z axes
+        x_axis = np.array([1, 0, 0])
+        y_axis = np.array([0, 1, 0])
+        z_axis = np.array([0, 0, 1])
+
+        # Calculate the angles (in radians)
+        angle_x = np.arccos(np.dot(vector, x_axis))
+        angle_y = np.arccos(np.dot(vector, y_axis))
+        angle_z = np.arccos(np.dot(vector, z_axis))
+
+        return angle_x, angle_y, angle_z
+
+    def vector_to_quaternion(self, vector):
+        # Calculate angles with respect to x, y, z axes
+        angle_x, angle_y, angle_z = self.calculate_angles(vector)
+
+        # Convert Euler angles to quaternion
+        quaternion = tf_trans.quaternion_from_euler(angle_x, angle_y, angle_z)
+
+        return quaternion
 
 if __name__ == "__main__":
     processor = NormalImageProcessor()

@@ -63,13 +63,29 @@ def compute_3d_orientation_map(normal_map, orientation_map_2d, hair_mask):
     zeros = torch.zeros_like(vec_2d_x)
     vec_2d = torch.stack((vec_2d_x, vec_2d_y, zeros), dim=-1)
 
-    # Calculate perpendicular vectors
-    perp_vec = torch.cross(normal_map, vec_2d)
-    perp_vec /= torch.norm(perp_vec, dim=-1, keepdim=True)
+    # Calculate dot product of normal and vec_2d
+    dot_product = torch.sum(vec_2d * normal_map, dim=-1, keepdim=True)
 
-    # Rotate the 2D vectors to 3D space
-    vec_3d = torch.cross(normal_map, perp_vec)
-    vec_3d = vec_3d * torch.from_numpy(hair_mask[:,:,np.newaxis]).to("cuda")/255
+    # Calculate projection of vec_2d onto the plane defined by normal_map
+    projection = vec_2d - dot_product * normal_map
+    # projection = vec_2d
+
+    # Normalize the projection
+    norm = torch.norm(projection, dim=-1, keepdim=True)
+    projection = projection / norm  # Avoid division by zero
+
+    # Apply hair mask
+    hair_mask = torch.from_numpy(hair_mask).to("cuda").float() / 255.0
+    projection = projection * hair_mask.unsqueeze(-1)
+
+    # print(angles)
+    # # Calculate perpendicular vectors
+    # perp_vec = torch.cross(normal_map, vec_2d)
+    # perp_vec /= torch.norm(perp_vec, dim=-1, keepdim=True)
+
+    # # Rotate the 2D vectors to 3D space
+    # vec_3d = torch.cross(normal_map, perp_vec)
+    # vec_3d = vec_3d * torch.from_numpy(hair_mask[:,:,np.newaxis]).to("cuda")/255
 
     # for y in range(height):
     #     for x in range(width):
@@ -94,7 +110,8 @@ def compute_3d_orientation_map(normal_map, orientation_map_2d, hair_mask):
     #             orientation_map_3d[y, x] = vec_3d
 
     # return orientation_map_3d
-    return vec_3d
+    # return vec_3d
+    return projection
 
 def visualize_orientation_map(orientation_map_3d):
     """

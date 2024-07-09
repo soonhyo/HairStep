@@ -130,7 +130,7 @@ class RosApp():
         while not rospy.is_shutdown():
             if self.cv_depth is None or self.cv_image is None or self.cv_mask is None:
                 continue
-            normal_vis, normal_map = compute_normal_map(self.cv_depth, 7)
+            normal_vis, normal_map = compute_normal_map(self.cv_depth, 3)
             normal_image = self.bridge.cv2_to_imgmsg(normal_vis, "bgr8")
             normal_image.header = Header(stamp=self.stamp)
             self.normal_pub.publish(normal_image)
@@ -154,7 +154,7 @@ class RosApp():
 
                 orientation_3d_map =  compute_3d_orientation_map(normal_map, angle_map, self.cv_mask)
                 orientation_3d_vis = visualize_orientation_map(orientation_3d_map.to("cpu").numpy())
-
+                orientation_3d_vis = cv2.cvtColor(orientation_3d_vis, cv2.COLOR_RGB2BGR)
                 orientation_3d_image = self.bridge.cv2_to_imgmsg(orientation_3d_vis, "bgr8")
                 orientation_3d_image.header = Header(stamp=self.stamp)
                 self.ori3d_pub.publish(orientation_3d_image)
