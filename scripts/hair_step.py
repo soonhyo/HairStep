@@ -6,7 +6,7 @@ import cv2
 import open3d as o3d
 from sensor_msgs.msg import Image, CameraInfo, PointCloud2, PointField
 from visualization_msgs.msg import Marker, MarkerArray
-from geometry_msgs.msg import Point, Quaternion
+from geometry_msgs.msg import Point, Quaternion, Pose, PoseArray
 import tf.transformations as tf_trans
 import sensor_msgs.point_cloud2 as pc2
 from cv_bridge import CvBridge, CvBridgeError
@@ -97,6 +97,7 @@ class RosApp():
         self.normal_pub = rospy.Publisher("/normal_image", Image, queue_size=1)
         self.ori3d_pub = rospy.Publisher("/orientation_image", Image, queue_size=1)
         self.cloud_pub = rospy.Publisher("/hair_pointcloud", PointCloud2, queue_size=1)
+        self.pose_pub = rospy.Publisher("/orientation_field", PoseArray, queue_size=1)
 
         self.rate = rospy.Rate(30)
 
@@ -131,6 +132,75 @@ class RosApp():
     def camera_info_callback(self, data):
         self.camera_info = data
 
+    def publish_pose_array(self, point_cloud, orientation_3d_bgr, header):
+        pose_array = PoseArray()
+        pose_array.header = header
+
+        fx = self.camera_info.K[0]
+        fy = self.camera_info.K[4]
+        cx = self.camera_info.K[2]
+        cy = self.camera_info.K[5]
+
+        orientation_map = orientation_3d_bgr/255*2-1 # range : 0-1
+
+        for point in point_cloud[::128]:
+            x, y, z = point[0], point[1], point[2]
+
+            if z > 0:
+                u = int(fx * x / z + cx)
+                v = int(fy * y / z + cy)
+
+                if u >= 0 and u < orientation_map.shape[1] and v >= 0 and v < orientation_map.shape[0]:
+                    direction = orientation_map[v, u]
+
+                    # Normalize the direction vector
+                    norm = np.linalg.norm(direction)
+                    if norm == 0:
+                        continue
+                    direction = direction / norm
+
+                    # Convert the direction vector to a quaternion
+                    quat = self.vector_to_quaternion(direction)
+
+                    pose = Pose()
+                    pose.position.x = x
+                    pose.position.y = y
+                    pose.position.z = z
+                    pose.orientation.x = quat[0]
+                    pose.orientation.y = quat[1]
+                    pose.orientation.z = quat[2]
+                    pose.orientation.w = quat[3]
+
+                    pose_array.poses.append(pose)
+
+        self.pose_pub.publish(pose_array)
+
+    def calculate_angles(self, vector):
+        # Normalize the input vector
+        vector = vector / np.linalg.norm(vector)
+
+        # Define the unit vectors for the x, y, z axes
+        x_axis = np.array([1, 0, 0])
+        y_axis = np.array([0, 1, 0])
+        z_axis = np.array([0, 0, 1])
+
+        # Calculate the angles (in radians)
+        angle_x = np.arccos(np.dot(vector, x_axis))
+        angle_y = np.arccos(np.dot(vector, y_axis))
+        angle_z = np.arccos(np.dot(vector, z_axis))
+
+        return angle_x, angle_y, angle_z
+
+    def vector_to_quaternion(self, vector):
+        # Calculate angles with respect to x, y, z axes
+        angle_x, angle_y, angle_z = self.calculate_angles(vector)
+
+        # Convert Euler angles to quaternion
+        quaternion = tf_trans.quaternion_from_euler(angle_x, angle_y, angle_z)
+
+        return quaternion
+
+
     def main(self):
         while not rospy.is_shutdown():
             if self.cv_depth is None or self.cv_image is None or self.cv_mask is None:
@@ -151,6 +221,8 @@ class RosApp():
             orientation_3d_img_msg = self.bridge.cv2_to_imgmsg(orientation_3d_bgr, "bgr8")
             orientation_3d_img_msg.header = Header(stamp=self.stamp)
             self.ori3d_pub.publish(orientation_3d_img_msg)
+
+            self.publish_pose_array(points, orientation_3d_bgr, Header(stamp=self.stamp, frame_id=self.frame_id))
 
             # PointField
             fields = [PointField('x', 0, PointField.FLOAT32, 1),
