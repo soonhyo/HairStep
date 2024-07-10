@@ -2,12 +2,14 @@ import time
 
 import rospy
 import numpy as np
+import torch
 import cv2
 import open3d as o3d
 from sensor_msgs.msg import Image, CameraInfo, PointCloud2, PointField
 from visualization_msgs.msg import Marker, MarkerArray
 from geometry_msgs.msg import Point, Quaternion, Pose, PoseArray
 import tf.transformations as tf_trans
+import tf
 import sensor_msgs.point_cloud2 as pc2
 from cv_bridge import CvBridge, CvBridgeError
 from std_msgs.msg import Header
@@ -41,6 +43,43 @@ class OrientationFieldGenerator():
 
         self.orientation_3d_bgr = None
 
+        self.listener = tf.TransformListener()
+        self.trans = None
+        self.rot = None
+
+    def get_transform(self, target, source):
+        while self.trans is None or self.rot is None:
+            try:
+                (self.trans,self.rot) = self.listener.lookupTransform(target, source, rospy.Time(0))
+            except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
+                continue
+
+    def transform_points(self, matrix, points):
+        # points: m x n x 3
+        m, n, _ = points.shape
+
+        # Convert points to homogeneous coordinates: m x n x 4
+        ones = np.ones((m, n, 1))
+        homogeneous_points = np.concatenate((points, ones), axis=-1)
+
+        # Reshape points to (m*n, 4) for matrix multiplication
+        homogeneous_points = homogeneous_points.reshape(-1, 4).T
+
+        # Apply transformation
+        transformed_points = np.dot(matrix, homogeneous_points)
+
+        # Reshape back to (m, n, 4) and drop homogeneous coordinate
+        transformed_points = transformed_points.T.reshape(m, n, 4)
+        transformed_points = transformed_points[:, :, :3] / transformed_points[:, :, 3][:, :, np.newaxis]
+
+        return transformed_points
+
+    def set_transform(self, orientation_map):
+        M = tf_trans.concatenate_matrices(tf_trans.translation_matrix(self.trans)
+                                          ,tf_trans.quaternion_matrix(self.rot))
+        transformed_map = self.transform_points(M, orientation_map.cpu().numpy())
+        return transformed_map
+
     def get_normal_image(self, cv_depth):
         # normal image
         normal_bgr, normal_map = compute_normal_map(cv_depth, 3)
@@ -55,7 +94,8 @@ class OrientationFieldGenerator():
     def get_orientation_3d_map(self, normal_map, angle_map, cv_mask):
         # orientation 3d map
         orientation_3d_map = compute_3d_orientation_map(normal_map, angle_map, cv_mask)
-        orientation_3d_rgb = visualize_orientation_map(orientation_3d_map.to("cpu").numpy())
+        orientation_3d_map_transformed= self.set_transform(orientation_3d_map)
+        orientation_3d_rgb = visualize_orientation_map(orientation_3d_map_transformed)
         orientation_3d_bgr = cv2.cvtColor(orientation_3d_rgb, cv2.COLOR_RGB2BGR)
         return orientation_3d_bgr
 
@@ -74,6 +114,7 @@ class OrientationFieldGenerator():
     def main(self, cv_depth, cv_image, cv_mask, camera_info):
         normal_bgr, normal_map = self.get_normal_image(cv_depth)
         strand_bgr, angle_map = self.get_strand_map(cv_image, cv_mask)
+        self.get_transform("/camera_link", "/camera_color_optical_frame")
         orientation_3d_bgr =  self.get_orientation_3d_map(normal_map, angle_map, cv_mask)
         points = self.get_pointcloud_with_orientation(orientation_3d_bgr, cv_depth, cv_mask, camera_info)
         return normal_bgr, strand_bgr, orientation_3d_bgr, points
