@@ -8,8 +8,8 @@ import open3d as o3d
 
 
 class CreatePointCloud(object):
-    def __init__(self, camera_info):
-        self.camera_info = camera_info
+    def __init__(self):
+        pass
         # print("initialized create point cloud instance...")
     def filter_points_in_distance_range(self, points, min_distance=0.01, max_distance=1.0):
         # 카메라(원점)로부터의 거리 계산
@@ -59,13 +59,13 @@ class CreatePointCloud(object):
 
         return original_indices
 
-    def create_point_cloud(self, color_image, depth_image, mask, time_now):
+    def create_point_cloud(self, color_image, depth_image, mask, camera_info):
 
         # 카메라 내부 파라미터 사용
-        fx = self.camera_info.K[0]
-        fy = self.camera_info.K[4]
-        cx = self.camera_info.K[2]
-        cy = self.camera_info.K[5]
+        fx = camera_info.K[0]
+        fy = camera_info.K[4]
+        cx = camera_info.K[2]
+        cy = camera_info.K[5]
 
         mask_3d = mask[:,:,np.newaxis].astype(np.bool_)
 
@@ -82,22 +82,22 @@ class CreatePointCloud(object):
         rgba = (0xFF << 24) | (r.astype(np.uint32) << 16) | (g.astype(np.uint32) << 8) | b.astype(np.uint32)
         points = np.concatenate((x[:,:,np.newaxis][mask_3d][:,np.newaxis], y[:,:,np.newaxis][mask_3d][:,np.newaxis], z[:,:,np.newaxis][mask_3d][:,np.newaxis], rgba[:,:,np.newaxis][mask_3d][:,np.newaxis].astype(np.uint32)), axis=1, dtype=object)
 
-        # PointField 구조 정의
-        fields = [PointField('x', 0, PointField.FLOAT32, 1),
-                  PointField('y', 4, PointField.FLOAT32, 1),
-                  PointField('z', 8, PointField.FLOAT32, 1),
-                  PointField('rgba', 12, PointField.UINT32, 1)]
+        # # PointField 구조 정의
+        # fields = [PointField('x', 0, PointField.FLOAT32, 1),
+        #           PointField('y', 4, PointField.FLOAT32, 1),
+        #           PointField('z', 8, PointField.FLOAT32, 1),
+        #           PointField('rgba', 12, PointField.UINT32, 1)]
 
-        # PointCloud2 메시지 생성
-        header = Header(frame_id=self.camera_info.header.frame_id, stamp=time_now)
-        return points, header, fields
+        # # PointCloud2 메시지 생성
+        # header = Header(frame_id=self.camera_info.header.frame_id, stamp=time_now)
+        return points
 
     def create_point_cloud_o3d(self, color_image, depth_image, mask_image, time_now):
         # 카메라 내부 파라미터 사용
-        fx = self.camera_info.K[0]
-        fy = self.camera_info.K[4]
-        cx = self.camera_info.K[2]
-        cy = self.camera_info.K[5]
+        fx = camera_info.K[0]
+        fy = camera_info.K[4]
+        cx = camera_info.K[2]
+        cy = camera_info.K[5]
 
         mask_3d = mask_image[:, :, np.newaxis].astype(np.bool_)
 
@@ -132,7 +132,7 @@ class CreatePointCloud(object):
 
         header = Header()
         header.stamp = time_now
-        header.frame_id = self.camera_info.header.frame_id
+        header.frame_id = camera_info.header.frame_id
 
         fields = [PointField('x', 0, PointField.FLOAT32, 1),
                   PointField('y', 4, PointField.FLOAT32, 1),
