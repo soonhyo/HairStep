@@ -5,12 +5,44 @@ from std_msgs.msg import Header
 import numpy as np
 import cv2
 import open3d as o3d
-
+import tf.transformations as tf_trans
 
 class CreatePointCloud(object):
     def __init__(self):
         pass
-        # print("initialized create point cloud instance...")
+
+    def transform_points(self, matrix, points):
+        # points: m x n x 3
+        m, n, _ = points.shape
+
+        # Convert points to homogeneous coordinates: m x n x 4
+        ones = np.ones((m, n, 1))
+        homogeneous_points = np.concatenate((points, ones), axis=-1)
+
+        # Reshape points to (m*n, 4) for matrix multiplication
+        homogeneous_points = homogeneous_points.reshape(-1, 4).T
+
+        # Apply transformation
+        transformed_points = np.dot(matrix, homogeneous_points)
+
+        # Reshape back to (m, n, 4) and drop homogeneous coordinate
+        transformed_points = transformed_points.T.reshape(m, n, 4)
+        transformed_points = transformed_points[:, :, :3] / transformed_points[:, :, 3][:, :, np.newaxis]
+
+        return transformed_points
+
+    def apply_transform_to_pcd(self, pcd, trans, rot):
+        M = tf_trans.concatenate_matrices(tf_trans.translation_matrix(trans),
+                                          tf_trans.quaternion_matrix(rot))
+        pcd.transform(M)
+        return pcd
+
+    def set_transform(self, points):
+        M = tf_trans.concatenate_matrices(tf_trans.translation_matrix(self.trans)
+                                          ,tf_trans.quaternion_matrix(self.rot))
+        transformed_map = self.transform_points(M, points)
+        return transformed_map
+
     def filter_points_in_distance_range(self, points, min_distance=0.01, max_distance=1.0):
         # 카메라(원점)로부터의 거리 계산
         points = points.astype(np.float32)
@@ -61,7 +93,7 @@ class CreatePointCloud(object):
 
     def create_point_cloud(self, color_image, depth_image, mask, camera_info):
 
-        # 카메라 내부 파라미터 사용
+        # camera intrinsic parameters
         fx = camera_info.K[0]
         fy = camera_info.K[4]
         cx = camera_info.K[2]
@@ -74,7 +106,6 @@ class CreatePointCloud(object):
         x = (u - cx) * z / fx
         y = (v - cy) * z / fy
 
-        # 마스크 적용
         colors = np.where(mask_3d, color_image, [0,0,0])
         r, g, b = colors[:,:, 2], colors[:,:, 1], colors[:,:, 0]
 
@@ -82,17 +113,10 @@ class CreatePointCloud(object):
         rgba = (0xFF << 24) | (r.astype(np.uint32) << 16) | (g.astype(np.uint32) << 8) | b.astype(np.uint32)
         points = np.concatenate((x[:,:,np.newaxis][mask_3d][:,np.newaxis], y[:,:,np.newaxis][mask_3d][:,np.newaxis], z[:,:,np.newaxis][mask_3d][:,np.newaxis], rgba[:,:,np.newaxis][mask_3d][:,np.newaxis].astype(np.uint32)), axis=1, dtype=object)
 
-        # # PointField 구조 정의
-        # fields = [PointField('x', 0, PointField.FLOAT32, 1),
-        #           PointField('y', 4, PointField.FLOAT32, 1),
-        #           PointField('z', 8, PointField.FLOAT32, 1),
-        #           PointField('rgba', 12, PointField.UINT32, 1)]
-
-        # # PointCloud2 메시지 생성
-        # header = Header(frame_id=self.camera_info.header.frame_id, stamp=time_now)
         return points
 
-    def create_point_cloud_o3d(self, color_image, depth_image, mask_image, time_now):
+    def create_point_cloud_o3d(self, color_image, depth_image, mask_image, camera_info, trans, rot, voxel_size=0.02):
+
         # 카메라 내부 파라미터 사용
         fx = camera_info.K[0]
         fy = camera_info.K[4]
@@ -109,34 +133,29 @@ class CreatePointCloud(object):
         points = np.stack((x, y, z), axis=-1).reshape(-1, 3)
         colors = color_image.reshape(-1, 3) / 255.0
 
+        # Mask 적용
+        points = points[mask_3d.flatten()]
+        colors = colors[mask_3d.flatten()]
+
+        # Open3D PointCloud 생성
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(points)
+        pcd.colors = o3d.utility.Vector3dVector(colors)
 
-        print(pcd)
-        # Downsample the point cloud
-        pcd = pcd.voxel_down_sample(voxel_size=0.02)
+        # Voxel 다운샘플링
+        downsampled_pcd = pcd.voxel_down_sample(voxel_size)
 
-        # Compute normals
-        pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.01, max_nn=30))
-        normals = np.asarray(pcd.normals)
-        print(normals)
-        # Convert normals to RGB and then to RGBA
-        normals_rgb = ((normals + 1) * 0.5 * 255).astype(np.uint8)
-        r = normals_rgb[:, 0].astype(np.uint32)
-        g = normals_rgb[:, 1].astype(np.uint32)
-        b = normals_rgb[:, 2].astype(np.uint32)
-        # rgba = (r << 16) | (g << 8) | b | 0xFF000000
-        rgba = (0xFF << 24) | (r.astype(np.uint32) << 16) | (g.astype(np.uint32) << 8) | b.astype(np.uint32)
+        # Open3D PointCloud에 변환 적용
+        transformed_pcd = self.apply_transform_to_pcd(downsampled_pcd, trans, rot)
 
-        points_rgba = np.hstack((points, normals, rgba[:, np.newaxis]))
+        transformed_points = np.asarray(transformed_pcd.points)
+        transformed_colors = np.asarray(transformed_pcd.colors)
 
-        header = Header()
-        header.stamp = time_now
-        header.frame_id = camera_info.header.frame_id
+        # Create RGB values in uint32 format
+        rgb_values = np.left_shift(0xFF, 24) + np.left_shift((transformed_colors[:, 0] * 255).astype(np.uint32), 16) + \
+                     np.left_shift((transformed_colors[:, 1] * 255).astype(np.uint32), 8) + \
+                     (transformed_colors[:, 2] * 255).astype(np.uint32)
 
-        fields = [PointField('x', 0, PointField.FLOAT32, 1),
-                  PointField('y', 4, PointField.FLOAT32, 1),
-                  PointField('z', 8, PointField.FLOAT32, 1),
-                  PointField('rgba', 12, PointField.UINT32, 1)]
-
-        return points_rgba, header, fields
+        # Stack xyz and rgb values
+        cloud_data = np.concatenate((transformed_points, rgb_values[:, np.newaxis]), axis=1, dtype=object)
+        return cloud_data

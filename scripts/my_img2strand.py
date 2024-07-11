@@ -111,7 +111,7 @@ def compute_3d_orientation_map(normal_map, orientation_map_2d, hair_mask):
 
     # return orientation_map_3d
     # return vec_3d
-    return projection
+    return projection.cpu().numpy()
 
 def visualize_orientation_map(orientation_map_3d):
     """
